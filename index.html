@@ -3,85 +3,27 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dual Cam & Map Mapper</title>
+    <title>AI Dual Cam Monitor</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
     <style>
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            background-color: #121212;
-            color: #e0e0e0;
-            margin: 0;
-            padding: 20px;
-        }
-        .main-layout {
-            display: flex;
-            gap: 20px;
-            flex-wrap: wrap;
-            justify-content: center;
-            width: 100%;
-            max-width: 1400px;
-        }
-        /* Camera Feed Styles */
-        .feeds-container {
-            flex: 1;
-            min-width: 400px;
-            display: grid;
-            grid-template-columns: 1fr;
-            gap: 15px;
-        }
-        .video-box {
-            background: #000;
-            border-radius: 12px;
-            overflow: hidden;
-            border: 2px solid #333;
-            position: relative;
-        }
-        video { width: 100%; display: block; background: #222; }
-        .label {
-            padding: 8px;
-            text-align: center;
-            background: rgba(0,0,0,0.7);
-            position: absolute;
-            bottom: 0;
-            width: 100%;
-        }
-        /* Map Styles */
-        .map-container {
-            flex: 0 0 400px;
-            background: #1e1e1e;
-            padding: 20px;
-            border-radius: 12px;
-            border: 1px solid #444;
-            text-align: center;
-        }
-        canvas {
-            background: #fff;
-            border-radius: 4px;
-            cursor: crosshair;
-            margin-top: 10px;
-        }
-        .controls { margin-bottom: 20px; }
-        button {
-            padding: 10px 20px;
-            background: #007bff;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-        }
-        button:hover { background: #0056b3; }
-        .hint { font-size: 0.85em; color: #aaa; margin-top: 10px; }
+        body { font-family: sans-serif; background: #121212; color: white; display: flex; flex-direction: column; align-items: center; padding: 20px; margin: 0; }
+        .main-layout { display: flex; gap: 20px; flex-wrap: wrap; justify-content: center; width: 100%; max-width: 1400px; }
+        .feeds-container { flex: 1; display: grid; grid-template-columns: 1fr; gap: 15px; min-width: 450px; }
+        .video-box { position: relative; background: #000; border-radius: 12px; overflow: hidden; border: 2px solid #333; }
+        video, canvas.overlay { width: 100%; height: auto; display: block; }
+        canvas.overlay { position: absolute; top: 0; left: 0; pointer-events: none; }
+        .map-container { flex: 0 0 360px; background: #1e1e1e; padding: 15px; border-radius: 12px; text-align: center; }
+        #mapCanvas { background: #fff; border-radius: 4px; cursor: crosshair; }
+        .status { margin: 10px; padding: 10px; border-radius: 5px; background: #333; font-size: 0.9em; }
+        button { padding: 12px 24px; background: #27ae60; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
     </style>
 </head>
 <body>
 
-    <h1>Camera Setup & Positioning</h1>
-    
-    <div class="controls">
-        <button id="startBtn">1. Enable Cameras</button>
-    </div>
+    <h1>AI Person Detection Monitor</h1>
+    <div id="status" class="status">Loading AI Models...</div>
+    <button id="startBtn" style="display:none;">Start Surveillance</button>
 
     <div class="main-layout">
         <div class="map-container">
@@ -95,18 +37,79 @@
         </div>
 
         <div class="feeds-container">
-            <div class="video-box">
+            <div class="video-box" id="container1">
                 <video id="video1" autoplay playsinline muted></video>
-                <div class="label" id="label1">Camera 1</div>
+                <canvas id="overlay1" class="overlay"></canvas>
             </div>
-            <div class="video-box">
+            <div class="video-box" id="container2">
                 <video id="video2" autoplay playsinline muted></video>
-                <div class="label" id="label2">Camera 2</div>
+                <canvas id="overlay2" class="overlay"></canvas>
             </div>
         </div>
     </div>
 
     <script>
+        let model = undefined;
+        const statusDiv = document.getElementById('status');
+        const startBtn = document.getElementById('startBtn');
+        
+        // Load the AI Model
+        cocoSsd.load().then(lModel => {
+            model = lModel;
+            statusDiv.innerText = "AI Models Ready. Grant camera access.";
+            startBtn.style.display = "block";
+        });
+
+        async function setupCamera(videoEl, deviceId) {
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: { deviceId: deviceId ? { exact: deviceId } : undefined, width: 640, height: 480 }
+            });
+            videoEl.srcObject = stream;
+            return new Promise(resolve => videoEl.onloadedmetadata = () => resolve());
+        }
+
+        async function detectFrame(video, canvas) {
+            const predictions = await model.detect(video);
+            const ctx = canvas.getContext('2d');
+            
+            // Sync canvas size to video size
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            predictions.forEach(prediction => {
+                if (prediction.class === 'person') {
+                    const [x, y, width, height] = prediction.bbox;
+                    // Bounding Box
+                    ctx.strokeStyle = '#00FF00';
+                    ctx.lineWidth = 4;
+                    ctx.strokeRect(x, y, width, height);
+                    
+                    // Label
+                    ctx.fillStyle = '#00FF00';
+                    ctx.font = '18px Arial';
+                    ctx.fillText(`PERSON ${Math.round(prediction.score * 100)}%`, x, y > 20 ? y - 10 : 20);
+                }
+            });
+
+            requestAnimationFrame(() => detectFrame(video, canvas));
+        }
+
+        startBtn.addEventListener('click', async () => {
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            const vDevices = devices.filter(d => d.kind === 'videoinput');
+            
+            await setupCamera(document.getElementById('video1'), vDevices[0]?.deviceId);
+            if (vDevices[1]) await setupCamera(document.getElementById('video2'), vDevices[1].deviceId);
+            
+            detectFrame(document.getElementById('video1'), document.getElementById('overlay1'));
+            detectFrame(document.getElementById('video2'), document.getElementById('overlay2'));
+            
+            startBtn.style.display = "none";
+            statusDiv.innerText = "System Active: Detecting People...";
+        });
+
+        // --- Map Logic ---
         const canvas = document.getElementById('mapCanvas');
         const ctx = canvas.getContext('2d');
         let cameras = [
@@ -117,30 +120,6 @@
         let isDragging = false;
         let selectedCam = null;
 
-        // --- Camera Logic ---
-        document.getElementById('startBtn').addEventListener('click', async () => {
-            try {
-                await navigator.mediaDevices.getUserMedia({ video: true });
-                const devices = await navigator.mediaDevices.enumerateDevices();
-                const videoDevices = devices.filter(d => d.kind === 'videoinput');
-
-                const setup = async (idx, el, lbl) => {
-                    if (videoDevices[idx]) {
-                        const stream = await navigator.mediaDevices.getUserMedia({
-                            video: { deviceId: { exact: videoDevices[idx].deviceId } }
-                        });
-                        el.srcObject = stream;
-                        lbl.innerText = videoDevices[idx].label;
-                    }
-                };
-
-                await setup(0, document.getElementById('video1'), document.getElementById('label1'));
-                await setup(1, document.getElementById('video2'), document.getElementById('label2'));
-                document.getElementById('startBtn').innerText = "Cameras Connected";
-            } catch (e) { alert("Camera access denied or not found."); }
-        });
-
-        // --- Map Logic ---
         function drawMap() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             
