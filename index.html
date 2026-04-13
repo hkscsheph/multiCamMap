@@ -3,51 +3,62 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Dual Cam Monitor</title>
+    <title>AI Sensor Fusion: Raycast Triangulation</title>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
     <style>
-        body { font-family: sans-serif; background: #121212; color: white; display: flex; flex-direction: column; align-items: center; padding: 20px; margin: 0; }
-        .main-layout { display: flex; gap: 20px; flex-wrap: wrap; justify-content: center; width: 100%; max-width: 1400px; }
-        .feeds-container { flex: 1; display: grid; grid-template-columns: 1fr; gap: 15px; min-width: 450px; }
-        .video-box { position: relative; background: #000; border-radius: 12px; overflow: hidden; border: 2px solid #333; }
-        video, canvas.overlay { width: 100%; height: auto; display: block; }
-        canvas.overlay { position: absolute; top: 0; left: 0; pointer-events: none; }
-        .map-container { flex: 0 0 360px; background: #1e1e1e; padding: 15px; border-radius: 12px; text-align: center; }
-        #mapCanvas { background: #fff; border-radius: 4px; cursor: crosshair; }
-        .status { margin: 10px; padding: 10px; border-radius: 5px; background: #333; font-size: 0.9em; }
-        button { padding: 12px 24px; background: #27ae60; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
+        body { font-family: 'Segoe UI', sans-serif; background: #0f0f0f; color: #eee; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; }
+        .main-layout { display: flex; gap: 20px; flex-wrap: wrap; justify-content: center; width: 100%; max-width: 1600px; }
+        
+        /* Video Section */
+        .feeds-container { flex: 1; display: grid; grid-template-columns: 1fr; gap: 15px; min-width: 480px; }
+        .video-box { position: relative; background: #000; border-radius: 12px; overflow: hidden; border: 2px solid #333; height: 360px; }
+        video, canvas.overlay { width: 100%; height: 100%; object-fit: cover; position: absolute; top:0; left:0; }
+        canvas.overlay { pointer-events: none; z-index: 10; }
+        
+        /* Sidebar */
+        .sidebar { flex: 0 0 380px; display: flex; flex-direction: column; gap: 15px; }
+        .panel { background: #1a1a1a; padding: 15px; border-radius: 12px; border: 1px solid #333; }
+        #mapCanvas { background: #fff; border-radius: 8px; cursor: crosshair; width: 100%; height: auto; }
+        
+        .status { margin-bottom: 20px; padding: 10px 20px; border-radius: 30px; background: #222; border: 1px solid #444; font-size: 0.9em; }
+        button { padding: 12px 24px; background: #27ae60; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; transition: 0.2s; }
+        button:hover { background: #2ecc71; transform: translateY(-2px); }
+        
+        textarea { width: 100%; height: 100px; background: #050505; color: #00ff41; border: 1px solid #333; font-family: monospace; font-size: 11px; padding: 8px; box-sizing: border-box; margin-top: 10px; }
+        h3 { margin-top: 0; font-size: 1.1em; color: #aaa; }
     </style>
 </head>
 <body>
 
-    <h1>AI Person Detection Monitor</h1>
-    <div id="status" class="status">Loading AI Models...</div>
-    <button id="startBtn" style="display:none;">Start Surveillance</button>
+    <div class="status" id="status">📡 System: Loading AI Core...</div>
+    <button id="startBtn" style="display:none;">INITIALIZE SURVEILLANCE</button>
 
-    <div class="main-layout">
-        <div class="map-container">
-            <h3>Camera Floor Plan</h3>
-            <canvas id="mapCanvas" width="360" height="300"></canvas>
-            <p class="hint">Click to place position, drag to set angle.</p>
-            <div style="font-size: 0.8em; display: flex; justify-content: space-around;">
-                <span style="color: #007bff;">● Cam 1</span>
-                <span style="color: #ff4757;">● Cam 2</span>
+    <div class="main-layout" style="margin-top: 20px;">
+        <div class="sidebar">
+            <div class="panel">
+                <h3>Intelligence Map (Raycast)</h3>
+                <canvas id="mapCanvas" width="350" height="350"></canvas>
+                <div style="display: flex; justify-content: space-between; font-size: 11px; margin-top: 10px;">
+                    <span style="color: #007bff;">● Cam 1</span>
+                    <span style="color: #f39c12; font-weight: bold;">🐟 魚公仔 (Target)</span>
+                    <span style="color: #ff4757;">● Cam 2</span>
+                </div>
             </div>
-            <div style="margin-top: 15px;">
-              <label style="font-size: 0.8em; color: #aaa;">Configuration JSON:</label><br>
-              <textarea id="configOutput" readonly 
-                  style="width: 100%; height: 100px; background: #000; color: #0f0; border: 1px solid #444; font-family: monospace; font-size: 11px; padding: 5px; margin-top: 5px;"></textarea>
-              <button onclick="copyConfig()" style="margin-top: 5px; padding: 5px 10px; font-size: 12px; background: #444;">Copy to Clipboard</button>
-          </div>
+            
+            <div class="panel">
+                <h3>Hardware Config</h3>
+                <textarea id="configOutput" readonly></textarea>
+                <p style="font-size: 11px; color: #666; margin-top: 10px;">Drag cams on map to calibrate position and angle.</p>
+            </div>
         </div>
 
         <div class="feeds-container">
-            <div class="video-box" id="container1">
+            <div class="video-box">
                 <video id="video1" autoplay playsinline muted></video>
                 <canvas id="overlay1" class="overlay"></canvas>
             </div>
-            <div class="video-box" id="container2">
+            <div class="video-box">
                 <video id="video2" autoplay playsinline muted></video>
                 <canvas id="overlay2" class="overlay"></canvas>
             </div>
@@ -55,170 +66,213 @@
     </div>
 
     <script>
-        let model = undefined;
-        const statusDiv = document.getElementById('status');
-        const startBtn = document.getElementById('startBtn');
+        let model;
+        let isDragging = false;
+        let selectedCam = null;
         
-        // Load the AI Model
+        // 攝影機水平視角 (Field of View)，假設為 60 度
+        const CAMERA_FOV = 60 * Math.PI / 180; 
+
+        let cameras = [
+            { id: 1, x: 60, y: 300, angle: -45, color: '#007bff', detections: [] },
+            { id: 2, x: 290, y: 300, angle: -135, color: '#ff4757', detections: [] }
+        ];
+
+        const mCanvas = document.getElementById('mapCanvas');
+        const mCtx = mCanvas.getContext('2d');
+        const configOutput = document.getElementById('configOutput');
+
+        // 1. Setup AI
         cocoSsd.load().then(lModel => {
             model = lModel;
-            statusDiv.innerText = "AI Models Ready. Grant camera access.";
-            startBtn.style.display = "block";
+            document.getElementById('status').innerText = "✅ AI Core Ready. Awaiting Initialization.";
+            document.getElementById('startBtn').style.display = "block";
         });
 
-        async function setupCamera(videoEl, deviceId) {
+        // 2. Setup Video
+        async function startStream(videoEl, deviceId) {
             const stream = await navigator.mediaDevices.getUserMedia({
                 video: { deviceId: deviceId ? { exact: deviceId } : undefined, width: 640, height: 480 }
             });
             videoEl.srcObject = stream;
-            return new Promise(resolve => videoEl.onloadedmetadata = () => resolve());
+            return new Promise(res => videoEl.onloadedmetadata = res);
         }
 
-        async function detectFrame(video, canvas) {
+        // 3. Detection -> Convert to Global Angle
+        async function processCamera(video, canvas, camObj) {
             const predictions = await model.detect(video);
             const ctx = canvas.getContext('2d');
-            
-            // Sync canvas size to video size
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-            predictions.forEach(prediction => {
-                if (prediction.class === 'person') {
-                    const [x, y, width, height] = prediction.bbox;
-                    // Bounding Box
-                    ctx.strokeStyle = '#00FF00';
-                    ctx.lineWidth = 4;
-                    ctx.strokeRect(x, y, width, height);
+            camObj.detections = []; 
+
+            predictions.forEach(p => {
+                if (p.class === 'person' && p.score > 0.5) {
+                    const [x, y, w, h] = p.bbox;
                     
-                    // Label
-                    ctx.fillStyle = '#00FF00';
-                    ctx.font = '18px Arial';
-                    ctx.fillText(`PERSON ${Math.round(prediction.score * 100)}%`, x, y > 20 ? y - 10 : 20);
+                    // 畫框
+                    ctx.strokeStyle = camObj.color;
+                    ctx.lineWidth = 3;
+                    ctx.strokeRect(x, y, w, h);
+
+                    // 取得人物在畫面水平方向的中心點
+                    const personCenterX = x + w / 2;
+                    
+                    // 計算偏移角：將畫面 0~W 映射到 -FOV/2 ~ +FOV/2
+                    const offsetAngle = (personCenterX / video.videoWidth - 0.5) * CAMERA_FOV;
+                    
+                    // 攝影機自身角度轉換為弧度
+                    const camAngleRad = camObj.angle * Math.PI / 180;
+                    
+                    // 計算世界坐標系下的絕對射線角度
+                    const globalRayAngle = camAngleRad + offsetAngle;
+
+                    camObj.detections.push({ angle: globalRayAngle });
                 }
             });
 
-            requestAnimationFrame(() => detectFrame(video, canvas));
+            requestAnimationFrame(() => processCamera(video, canvas, camObj));
         }
 
-        startBtn.addEventListener('click', async () => {
-            const devices = await navigator.mediaDevices.enumerateDevices();
-            const vDevices = devices.filter(d => d.kind === 'videoinput');
-            
-            await setupCamera(document.getElementById('video1'), vDevices[0]?.deviceId);
-            if (vDevices[1]) await setupCamera(document.getElementById('video2'), vDevices[1].deviceId);
-            
-            detectFrame(document.getElementById('video1'), document.getElementById('overlay1'));
-            detectFrame(document.getElementById('video2'), document.getElementById('overlay2'));
-            
-            startBtn.style.display = "none";
-            statusDiv.innerText = "System Active: Detecting People...";
-        });
+        // 4. Raycast Math: 兩條直線求交點
+        function getIntersection(cam1, det1, cam2, det2) {
+            const x1 = cam1.x, y1 = cam1.y;
+            const x2 = cam2.x, y2 = cam2.y;
+            const a1 = det1.angle, a2 = det2.angle;
 
-        // --- Map Logic ---
-        const canvas = document.getElementById('mapCanvas');
-        const ctx = canvas.getContext('2d');
-        // let cameras = [
-        //     { x: 50, y: 50, angle: 0, color: '#007bff', active: true },
-        //     { x: 310, y: 50, angle: 180, color: '#ff4757', active: true }
-        // ];
-        let cameras = [
-            {
-                "x": 106,
-                "y": 19.02081298828125,
-                "angle": 79.38034472384487,
-                "color": "#007bff",
-                "active": true
-            },
-            {
-                "x": 299,
-                "y": 24.02081298828125,
-                "angle": 111.31791227546157,
-                "color": "#ff4757",
-                "active": true
+            const dx = x2 - x1;
+            const dy = y2 - y1;
+            
+            // Cramer's Rule 分母
+            const det = Math.cos(a1) * Math.sin(a2) - Math.sin(a1) * Math.cos(a2);
+
+            // 如果射線平行 (det接近0)，則無交點
+            if (Math.abs(det) < 0.001) return null; 
+
+            // 計算兩條射線各自的距離參數 t1, t2
+            const t1 = (dx * Math.sin(a2) - dy * Math.cos(a2)) / det;
+            const t2 = (dx * Math.sin(a1) - dy * Math.cos(a1)) / det;
+
+            // t1 和 t2 都必須大於 0 (代表交點在攝影機"前方")
+            if (t1 > 0 && t2 > 0) {
+                return { 
+                    x: x1 + t1 * Math.cos(a1), 
+                    y: y1 + t1 * Math.sin(a1) 
+                };
             }
-        ]
-
-        let isDragging = false;
-        let selectedCam = null;
+            return null;
+        }
 
         function drawMap() {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            mCtx.clearRect(0, 0, mCanvas.width, mCanvas.height);
             
-            // Draw grid
-            ctx.strokeStyle = '#eee';
-            for(let i=0; i<canvas.width; i+=20) { ctx.beginPath(); ctx.moveTo(i,0); ctx.lineTo(i,canvas.height); ctx.stroke(); }
-            for(let i=0; i<canvas.height; i+=20) { ctx.beginPath(); ctx.moveTo(0,i); ctx.lineTo(canvas.width,i); ctx.stroke(); }
+            // 畫網格
+            mCtx.strokeStyle = '#eee';
+            mCtx.lineWidth = 1;
+            for(let i=0; i<mCanvas.width; i+=50) {
+                mCtx.beginPath(); mCtx.moveTo(i,0); mCtx.lineTo(i,mCanvas.height); mCtx.stroke();
+                mCtx.beginPath(); mCtx.moveTo(0,i); mCtx.lineTo(mCanvas.width,i); mCtx.stroke();
+            }
 
-            cameras.forEach((cam, i) => {
-                ctx.save();
-                ctx.translate(cam.x, cam.y);
-                ctx.rotate(cam.angle * Math.PI / 180);
-
-                // Draw Field of View (FOV) cone
-                ctx.fillStyle = cam.color + '33';
-                ctx.beginPath();
-                ctx.moveTo(0,0);
-                ctx.arc(0, 0, 50, -Math.PI/4, Math.PI/4);
-                ctx.fill();
-
-                // Draw Camera Body
-                ctx.fillStyle = cam.color;
-                ctx.fillRect(-10, -8, 20, 16); // body
-                ctx.fillRect(8, -4, 6, 8);    // lens
-                
-                ctx.restore();
-                ctx.fillStyle = '#000';
-                ctx.fillText("Cam " + (i+1), cam.x - 15, cam.y + 25);
+            // 畫偵測射線 (視覺化有助於除錯)
+            cameras.forEach(cam => {
+                cam.detections.forEach(det => {
+                    mCtx.beginPath();
+                    mCtx.moveTo(cam.x, cam.y);
+                    // 畫一條很長的射線
+                    mCtx.lineTo(cam.x + 1000 * Math.cos(det.angle), cam.y + 1000 * Math.sin(det.angle));
+                    mCtx.strokeStyle = cam.color + '44'; // 半透明
+                    mCtx.lineWidth = 2;
+                    mCtx.stroke();
+                });
             });
+
+            // 計算所有射線的交點 (Raycast Triangulation)
+            const targets = [];
+            cameras[0].detections.forEach(d1 => {
+                cameras[1].detections.forEach(d2 => {
+                    const intersect = getIntersection(cameras[0], d1, cameras[1], d2);
+                    if (intersect) targets.push(intersect);
+                });
+            });
+
+            // 畫出「魚公仔」
+            targets.forEach(p => {
+                mCtx.font = "28px Arial";
+                mCtx.textAlign = "center";
+                mCtx.textBaseline = "middle";
+                mCtx.fillText("🐟", p.x, p.y);
+            });
+
+            // 畫攝影機 Icon
+            cameras.forEach(cam => {
+                mCtx.save();
+                mCtx.translate(cam.x, cam.y);
+                mCtx.rotate(cam.angle * Math.PI / 180);
+                
+                // 畫 FOV 扇形
+                mCtx.fillStyle = cam.color + '22';
+                mCtx.beginPath(); 
+                mCtx.moveTo(0,0); 
+                mCtx.arc(0, 0, 80, -CAMERA_FOV/2, CAMERA_FOV/2); 
+                mCtx.fill();
+                
+                // 畫鏡頭本體
+                mCtx.fillStyle = cam.color;
+                mCtx.fillRect(-10,-6,20,12); mCtx.fillRect(10,-3,4,6);
+                mCtx.restore();
+            });
+
+            requestAnimationFrame(drawMap);
         }
 
-        const getMousePos = (e) => {
-            const rect = canvas.getBoundingClientRect();
-            return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+        // 5. Interactivity
+        document.getElementById('startBtn').addEventListener('click', async () => {
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            const v = devices.filter(d => d.kind === 'videoinput');
+            await startStream(document.getElementById('video1'), v[0]?.deviceId);
+            if(v[1]) await startStream(document.getElementById('video2'), v[1].deviceId);
+            
+            processCamera(document.getElementById('video1'), document.getElementById('overlay1'), cameras[0]);
+            processCamera(document.getElementById('video2'), document.getElementById('overlay2'), cameras[1]);
+            
+            document.getElementById('startBtn').style.display = 'none';
+            document.getElementById('status').innerText = "🛰️ SURVEILLANCE ACTIVE";
+            drawMap();
+        });
+
+        const getMouse = (e) => {
+            const r = mCanvas.getBoundingClientRect();
+            return { x: e.clientX - r.left, y: e.clientY - r.top };
         };
 
-        canvas.onmousedown = (e) => {
-            const pos = getMousePos(e);
-            // Simple logic: Left side of canvas controls Cam 1, Right side controls Cam 2
-            selectedCam = pos.x < canvas.width / 2 ? cameras[0] : cameras[1];
-            selectedCam.x = pos.x;
-            selectedCam.y = pos.y;
+        mCanvas.onmousedown = (e) => {
+            const p = getMouse(e);
+            selectedCam = p.x < mCanvas.width/2 ? cameras[0] : cameras[1];
+            selectedCam.x = p.x; selectedCam.y = p.y;
             isDragging = true;
-            drawMap();
         };
 
-        canvas.onmousemove = (e) => {
-            if (!isDragging) return;
-            const pos = getMousePos(e);
-            // Calculate angle based on mouse movement away from position
-            const dx = pos.x - selectedCam.x;
-            const dy = pos.y - selectedCam.y;
-            selectedCam.angle = Math.atan2(dy, dx) * 180 / Math.PI;
-            drawMap();
+        mCanvas.onmousemove = (e) => {
+            if(!isDragging) return;
+            const p = getMouse(e);
+            selectedCam.angle = Math.atan2(p.y - selectedCam.y, p.x - selectedCam.x) * 180 / Math.PI;
         };
 
-        window.onmouseup = () => { 
+        window.onmouseup = () => {
             if(isDragging) {
-                isDragging = false; 
-                updateConfigDisplay(); // Update the textarea when finished moving
+                isDragging = false;
+                const clean = cameras.map(({detections, ...rest}) => rest);
+                configOutput.value = JSON.stringify(clean, null, 2);
             }
         };
 
-        drawMap(); // Initial draw
-
-        const configOutput = document.getElementById('configOutput');
-
-        function updateConfigDisplay() {
-            // Formats the camera array into a string for easy copy-pasting back into your code
-            configOutput.value = JSON.stringify(cameras, null, 4);
-        }
-
-        function copyConfig() {
-            configOutput.select();
-            document.execCommand('copy');
-            alert("Configuration copied!");
-        }
+        // Initial setup
+        const clean = cameras.map(({detections, ...rest}) => rest);
+        configOutput.value = JSON.stringify(clean, null, 2);
+        drawMap();
     </script>
 </body>
 </html>
