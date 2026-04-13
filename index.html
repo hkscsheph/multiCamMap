@@ -3,20 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Sensor Fusion: Tri-Cam Triangulation</title>
+    <title>AI Sensor Fusion: MJPEG IP Cameras</title>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
     <style>
         body { font-family: 'Segoe UI', sans-serif; background: #0f0f0f; color: #eee; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; }
         .main-layout { display: flex; gap: 20px; flex-wrap: wrap; justify-content: center; width: 100%; max-width: 1600px; }
         
-        /* Video Section - Updated to auto-fit 3 cameras */
         .feeds-container { flex: 1; display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 15px; }
-        .video-box { position: relative; background: #000; border-radius: 12px; overflow: hidden; border: 2px solid #333; height: 300px; }
-        video, canvas.overlay { width: 100%; height: 100%; object-fit: cover; position: absolute; top:0; left:0; }
+        .video-box { position: relative; background: #000; border-radius: 12px; overflow: hidden; border: 2px solid #333; height: 300px; display: flex; align-items: center; justify-content: center; color: #666; font-size: 12px; }
+        
+        /* 這裡將原本的 video 樣式改給 img 使用 */
+        img.stream-source, canvas.overlay { width: 100%; height: 100%; object-fit: cover; position: absolute; top:0; left:0; }
         canvas.overlay { pointer-events: none; z-index: 10; }
         
-        /* Sidebar */
         .sidebar { flex: 0 0 380px; display: flex; flex-direction: column; gap: 15px; }
         .panel { background: #1a1a1a; padding: 15px; border-radius: 12px; border: 1px solid #333; }
         #mapCanvas { background: #fff; border-radius: 8px; cursor: crosshair; width: 100%; height: auto; }
@@ -32,12 +32,12 @@
 <body>
 
     <div class="status" id="status">📡 System: Loading AI Core...</div>
-    <button id="startBtn" style="display:none;">INITIALIZE SURVEILLANCE</button>
+    <button id="startBtn" style="display:none;">CONNECT IP CAMERAS</button>
 
     <div class="main-layout" style="margin-top: 20px;">
         <div class="sidebar">
             <div class="panel">
-                <h3>Intelligence Map (3-Way Raycast)</h3>
+                <h3>Intelligence Map (MJPEG Triangulation)</h3>
                 <canvas id="mapCanvas" width="350" height="350"></canvas>
                 <div style="display: flex; justify-content: space-between; font-size: 11px; margin-top: 10px;">
                     <span style="color: #007bff;">● Cam 1</span>
@@ -52,21 +52,23 @@
             <div class="panel">
                 <h3>Hardware Config</h3>
                 <textarea id="configOutput" readonly></textarea>
-                <p style="font-size: 11px; color: #666; margin-top: 10px;">Drag cams on map to calibrate position and angle.</p>
             </div>
         </div>
 
         <div class="feeds-container">
             <div class="video-box">
-                <video id="video1" autoplay playsinline muted></video>
+                <div>No Signal</div>
+                <img id="stream1" class="stream-source" crossorigin="anonymous" />
                 <canvas id="overlay1" class="overlay"></canvas>
             </div>
             <div class="video-box">
-                <video id="video2" autoplay playsinline muted></video>
+                <div>No Signal</div>
+                <img id="stream2" class="stream-source" crossorigin="anonymous" />
                 <canvas id="overlay2" class="overlay"></canvas>
             </div>
             <div class="video-box">
-                <video id="video3" autoplay playsinline muted></video>
+                <div>No Signal</div>
+                <img id="stream3" class="stream-source" crossorigin="anonymous" />
                 <canvas id="overlay3" class="overlay"></canvas>
             </div>
         </div>
@@ -76,18 +78,14 @@
         let model;
         let isDragging = false;
         let selectedCam = null;
-        
-        // 攝影機水平視角 (Field of View)，假設為 60 度
         const CAMERA_FOV = 60 * Math.PI / 180; 
-        
-        // 三點交會容差閾值 (像素距離)，越小要求越精準
         const INTERSECT_THRESHOLD = 40; 
 
-        // 擴增為 3 台攝影機
+        // 🌟 這裡換成你的 MJPEG 攝影機真實網址
         let cameras = [
-            { id: 1, x: 60, y: 300, angle: -45, color: '#007bff', detections: [] },
-            { id: 2, x: 290, y: 300, angle: -135, color: '#ff4757', detections: [] },
-            { id: 3, x: 175, y: 50, angle: 90, color: '#9b59b6', detections: [] }
+            { id: 1, x: 60, y: 300, angle: -45, color: '#007bff', detections: [], streamUrl: 'http://admin:ictipcam1@192.168.120.3/ISAPI/Streaming/channels/102/httpPreview' },
+            { id: 2, x: 290, y: 300, angle: -135, color: '#ff4757', detections: [], streamUrl: 'http://admin:ictipcam1@192.168.120.4/ISAPI/Streaming/channels/102/httpPreview' },
+            { id: 3, x: 175, y: 50, angle: 90, color: '#9b59b6', detections: [], streamUrl: 'http://admin:ictipcam1@192.168.120.5/ISAPI/Streaming/channels/102/httpPreview' }
         ];
 
         const mCanvas = document.getElementById('mapCanvas');
@@ -97,25 +95,27 @@
         // 1. Setup AI
         cocoSsd.load().then(lModel => {
             model = lModel;
-            document.getElementById('status').innerText = "✅ AI Core Ready. Awaiting Initialization.";
+            document.getElementById('status').innerText = "✅ AI Core Ready. Awaiting IP Connection.";
             document.getElementById('startBtn').style.display = "block";
         });
 
-        // 2. Setup Video
-        async function startStream(videoEl, deviceId) {
-            const stream = await navigator.mediaDevices.getUserMedia({
-                video: { deviceId: deviceId ? { exact: deviceId } : undefined, width: 640, height: 480 }
-            });
-            videoEl.srcObject = stream;
-            return new Promise(res => videoEl.onloadedmetadata = res);
-        }
+        // 3. Detection -> 直接處理 HTMLImageElement
+        async function processCamera(imgElement, canvas, camObj) {
+            // 如果圖片還沒載入完畢或是破圖，就略過這一幀
+            if (!imgElement.complete || imgElement.naturalWidth === 0) {
+                requestAnimationFrame(() => processCamera(imgElement, canvas, camObj));
+                return;
+            }
 
-        // 3. Detection -> Convert to Global Angle
-        async function processCamera(video, canvas, camObj) {
-            const predictions = await model.detect(video);
+            // TF.js 直接讀取 MJPEG img 標籤的當下畫面
+            const predictions = await model.detect(imgElement);
             const ctx = canvas.getContext('2d');
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
+            
+            // 確保 canvas 尺寸與真實串流解析度一致
+            if (canvas.width !== imgElement.naturalWidth) {
+                canvas.width = imgElement.naturalWidth;
+                canvas.height = imgElement.naturalHeight;
+            }
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
             camObj.detections = []; 
@@ -128,7 +128,7 @@
                     ctx.strokeRect(x, y, w, h);
 
                     const personCenterX = x + w / 2;
-                    const offsetAngle = (personCenterX / video.videoWidth - 0.5) * CAMERA_FOV;
+                    const offsetAngle = (personCenterX / imgElement.naturalWidth - 0.5) * CAMERA_FOV;
                     const camAngleRad = camObj.angle * Math.PI / 180;
                     const globalRayAngle = camAngleRad + offsetAngle;
 
@@ -136,33 +136,25 @@
                 }
             });
 
-            requestAnimationFrame(() => processCamera(video, canvas, camObj));
+            // 持續迴圈抓取 MJPEG 串流的新畫面
+            requestAnimationFrame(() => processCamera(imgElement, canvas, camObj));
         }
 
-        // 4. Raycast Math: 兩條直線求交點
         function getIntersection(cam1, det1, cam2, det2) {
             const x1 = cam1.x, y1 = cam1.y;
             const x2 = cam2.x, y2 = cam2.y;
             const a1 = det1.angle, a2 = det2.angle;
-
-            const dx = x2 - x1;
-            const dy = y2 - y1;
-            
+            const dx = x2 - x1, dy = y2 - y1;
             const det = Math.cos(a1) * Math.sin(a2) - Math.sin(a1) * Math.cos(a2);
             if (Math.abs(det) < 0.001) return null; 
-
             const t1 = (dx * Math.sin(a2) - dy * Math.cos(a2)) / det;
             const t2 = (dx * Math.sin(a1) - dy * Math.cos(a1)) / det;
-
-            if (t1 > 0 && t2 > 0) {
-                return { x: x1 + t1 * Math.cos(a1), y: y1 + t1 * Math.sin(a1) };
-            }
+            if (t1 > 0 && t2 > 0) return { x: x1 + t1 * Math.cos(a1), y: y1 + t1 * Math.sin(a1) };
             return null;
         }
 
         function drawMap() {
             mCtx.clearRect(0, 0, mCanvas.width, mCanvas.height);
-            
             mCtx.strokeStyle = '#eee';
             mCtx.lineWidth = 1;
             for(let i=0; i<mCanvas.width; i+=50) {
@@ -170,7 +162,6 @@
                 mCtx.beginPath(); mCtx.moveTo(0,i); mCtx.lineTo(mCanvas.width,i); mCtx.stroke();
             }
 
-            // 畫偵測射線
             cameras.forEach(cam => {
                 cam.detections.forEach(det => {
                     mCtx.beginPath();
@@ -182,37 +173,27 @@
                 });
             });
 
-            // ★ 3-Way Raycast Triangulation 核心邏輯
             const targets = [];
             cameras[0].detections.forEach(d1 => {
                 cameras[1].detections.forEach(d2 => {
                     cameras[2].detections.forEach(d3 => {
-                        // 取得兩兩交會點
                         const p12 = getIntersection(cameras[0], d1, cameras[1], d2);
                         const p23 = getIntersection(cameras[1], d2, cameras[2], d3);
                         const p31 = getIntersection(cameras[2], d3, cameras[0], d1);
 
-                        // 確保三條線都有成功互相交叉 (都在鏡頭前方)
                         if (p12 && p23 && p31) {
-                            // 計算三個交點互相之間的距離
                             const dist1 = Math.hypot(p12.x - p23.x, p12.y - p23.y);
                             const dist2 = Math.hypot(p23.x - p31.x, p23.y - p31.y);
                             const dist3 = Math.hypot(p31.x - p12.x, p31.y - p12.y);
 
-                            // 如果三個點靠得夠近，認定為同一個物件
                             if (dist1 < INTERSECT_THRESHOLD && dist2 < INTERSECT_THRESHOLD && dist3 < INTERSECT_THRESHOLD) {
-                                // 取三角形的質心 (平均座標) 作為最終目標點
-                                targets.push({
-                                    x: (p12.x + p23.x + p31.x) / 3,
-                                    y: (p12.y + p23.y + p31.y) / 3
-                                });
+                                targets.push({ x: (p12.x + p23.x + p31.x)/3, y: (p12.y + p23.y + p31.y)/3 });
                             }
                         }
                     });
                 });
             });
 
-            // 只有在 3 台攝影機同時確認時，才會畫出魚公仔
             targets.forEach(p => {
                 mCtx.font = "28px Arial";
                 mCtx.textAlign = "center";
@@ -220,15 +201,12 @@
                 mCtx.fillText("🐟", p.x, p.y);
             });
 
-            // 畫攝影機 Icon
             cameras.forEach(cam => {
                 mCtx.save();
                 mCtx.translate(cam.x, cam.y);
                 mCtx.rotate(cam.angle * Math.PI / 180);
-                
                 mCtx.fillStyle = cam.color + '22';
                 mCtx.beginPath(); mCtx.moveTo(0,0); mCtx.arc(0, 0, 80, -CAMERA_FOV/2, CAMERA_FOV/2); mCtx.fill();
-                
                 mCtx.fillStyle = cam.color;
                 mCtx.fillRect(-10,-6,20,12); mCtx.fillRect(10,-3,4,6);
                 mCtx.restore();
@@ -237,22 +215,24 @@
             requestAnimationFrame(drawMap);
         }
 
-        // 5. Interactivity
-        document.getElementById('startBtn').addEventListener('click', async () => {
-            const devices = await navigator.mediaDevices.enumerateDevices();
-            const v = devices.filter(d => d.kind === 'videoinput');
-            
-            // 嘗試啟動 3 台攝影機
-            if(v[0]) await startStream(document.getElementById('video1'), v[0].deviceId);
-            if(v[1]) await startStream(document.getElementById('video2'), v[1].deviceId);
-            if(v[2]) await startStream(document.getElementById('video3'), v[2].deviceId);
-            
-            processCamera(document.getElementById('video1'), document.getElementById('overlay1'), cameras[0]);
-            processCamera(document.getElementById('video2'), document.getElementById('overlay2'), cameras[1]);
-            processCamera(document.getElementById('video3'), document.getElementById('overlay3'), cameras[2]);
+        // 5. Interactivity -> 取代 getUserMedia，直接設定 src
+        document.getElementById('startBtn').addEventListener('click', () => {
+            const img1 = document.getElementById('stream1');
+            const img2 = document.getElementById('stream2');
+            const img3 = document.getElementById('stream3');
+
+            // 載入 MJPEG 網址
+            img1.src = cameras[0].streamUrl;
+            img2.src = cameras[1].streamUrl;
+            img3.src = cameras[2].streamUrl;
+
+            // 開始處理畫面
+            processCamera(img1, document.getElementById('overlay1'), cameras[0]);
+            processCamera(img2, document.getElementById('overlay2'), cameras[1]);
+            processCamera(img3, document.getElementById('overlay3'), cameras[2]);
             
             document.getElementById('startBtn').style.display = 'none';
-            document.getElementById('status').innerText = "🛰️ SURVEILLANCE ACTIVE (3 CAMERAS)";
+            document.getElementById('status').innerText = "🛰️ IP SURVEILLANCE ACTIVE (3 CAMERAS)";
             drawMap();
         });
 
@@ -263,8 +243,6 @@
 
         mCanvas.onmousedown = (e) => {
             const p = getMouse(e);
-            
-            // 找出距離滑鼠最近的攝影機進行拖曳
             let minDist = Infinity;
             cameras.forEach(cam => {
                 const dist = Math.hypot(cam.x - p.x, cam.y - p.y);
@@ -273,8 +251,6 @@
                     selectedCam = cam;
                 }
             });
-
-            // 只有點擊在攝影機附近才允許拖曳 (增加防誤觸)
             if (minDist < 30) {
                 selectedCam.x = p.x; selectedCam.y = p.y;
                 isDragging = true;
@@ -295,7 +271,6 @@
             }
         };
 
-        // Initial setup
         const clean = cameras.map(({detections, ...rest}) => rest);
         configOutput.value = JSON.stringify(clean, null, 2);
         drawMap();
