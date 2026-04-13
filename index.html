@@ -34,6 +34,12 @@
                 <span style="color: #007bff;">● Cam 1</span>
                 <span style="color: #ff4757;">● Cam 2</span>
             </div>
+            <div style="margin-top: 15px;">
+              <label style="font-size: 0.8em; color: #aaa;">Configuration JSON:</label><br>
+              <textarea id="configOutput" readonly 
+                  style="width: 100%; height: 100px; background: #000; color: #0f0; border: 1px solid #444; font-family: monospace; font-size: 11px; padding: 5px; margin-top: 5px;"></textarea>
+              <button onclick="copyConfig()" style="margin-top: 5px; padding: 5px 10px; font-size: 12px; background: #444;">Copy to Clipboard</button>
+          </div>
         </div>
 
         <div class="feeds-container">
@@ -112,10 +118,26 @@
         // --- Map Logic ---
         const canvas = document.getElementById('mapCanvas');
         const ctx = canvas.getContext('2d');
+        // let cameras = [
+        //     { x: 50, y: 50, angle: 0, color: '#007bff', active: true },
+        //     { x: 310, y: 50, angle: 180, color: '#ff4757', active: true }
+        // ];
         let cameras = [
-            { x: 50, y: 50, angle: 0, color: '#007bff', active: true },
-            { x: 310, y: 50, angle: 180, color: '#ff4757', active: true }
-        ];
+            {
+                "x": 106,
+                "y": 19.02081298828125,
+                "angle": 79.38034472384487,
+                "color": "#007bff",
+                "active": true
+            },
+            {
+                "x": 299,
+                "y": 24.02081298828125,
+                "angle": 111.31791227546157,
+                "color": "#ff4757",
+                "active": true
+            }
+        ]
 
         let isDragging = false;
         let selectedCam = null;
@@ -176,9 +198,27 @@
             drawMap();
         };
 
-        window.onmouseup = () => { isDragging = false; };
+        window.onmouseup = () => { 
+            if(isDragging) {
+                isDragging = false; 
+                updateConfigDisplay(); // Update the textarea when finished moving
+            }
+        };
 
         drawMap(); // Initial draw
+
+        const configOutput = document.getElementById('configOutput');
+
+        function updateConfigDisplay() {
+            // Formats the camera array into a string for easy copy-pasting back into your code
+            configOutput.value = JSON.stringify(cameras, null, 4);
+        }
+
+        function copyConfig() {
+            configOutput.select();
+            document.execCommand('copy');
+            alert("Configuration copied!");
+        }
     </script>
 </body>
 </html>
