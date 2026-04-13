@@ -3,118 +3,203 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dual Camera Feed</title>
+    <title>Dual Cam & Map Mapper</title>
     <style>
         body {
-            font-family: sans-serif;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             display: flex;
             flex-direction: column;
             align-items: center;
-            background-color: #1a1a1a;
-            color: white;
+            background-color: #121212;
+            color: #e0e0e0;
             margin: 0;
             padding: 20px;
         }
-        .container {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+        .main-layout {
+            display: flex;
             gap: 20px;
+            flex-wrap: wrap;
+            justify-content: center;
             width: 100%;
-            max-width: 1200px;
+            max-width: 1400px;
+        }
+        /* Camera Feed Styles */
+        .feeds-container {
+            flex: 1;
+            min-width: 400px;
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 15px;
         }
         .video-box {
             background: #000;
-            border-radius: 8px;
+            border-radius: 12px;
             overflow: hidden;
-            border: 2px solid #444;
+            border: 2px solid #333;
+            position: relative;
         }
-        video {
-            width: 100%;
-            height: auto;
-            display: block;
-            background: #222;
-        }
+        video { width: 100%; display: block; background: #222; }
         .label {
-            padding: 10px;
+            padding: 8px;
             text-align: center;
-            background: #333;
-            font-weight: bold;
+            background: rgba(0,0,0,0.7);
+            position: absolute;
+            bottom: 0;
+            width: 100%;
         }
+        /* Map Styles */
+        .map-container {
+            flex: 0 0 400px;
+            background: #1e1e1e;
+            padding: 20px;
+            border-radius: 12px;
+            border: 1px solid #444;
+            text-align: center;
+        }
+        canvas {
+            background: #fff;
+            border-radius: 4px;
+            cursor: crosshair;
+            margin-top: 10px;
+        }
+        .controls { margin-bottom: 20px; }
         button {
-            padding: 12px 24px;
-            font-size: 16px;
-            cursor: pointer;
-            background-color: #007bff;
+            padding: 10px 20px;
+            background: #007bff;
             color: white;
             border: none;
-            border-radius: 5px;
-            margin-bottom: 20px;
+            border-radius: 4px;
+            cursor: pointer;
         }
-        button:hover { background-color: #0056b3; }
+        button:hover { background: #0056b3; }
+        .hint { font-size: 0.85em; color: #aaa; margin-top: 10px; }
     </style>
 </head>
 <body>
 
-    <h1>Dual Camera Monitor</h1>
-    <button id="startBtn">Initialize Cameras</button>
+    <h1>Camera Setup & Positioning</h1>
+    
+    <div class="controls">
+        <button id="startBtn">1. Enable Cameras</button>
+    </div>
 
-    <div class="container">
-        <div class="video-box">
-            <video id="video1" autoplay playsinline muted></video>
-            <div class="label" id="label1">Camera 1</div>
+    <div class="main-layout">
+        <div class="map-container">
+            <h3>Camera Floor Plan</h3>
+            <canvas id="mapCanvas" width="360" height="300"></canvas>
+            <p class="hint">Click to place position, drag to set angle.</p>
+            <div style="font-size: 0.8em; display: flex; justify-content: space-around;">
+                <span style="color: #007bff;">● Cam 1</span>
+                <span style="color: #ff4757;">● Cam 2</span>
+            </div>
         </div>
-        <div class="video-box">
-            <video id="video2" autoplay playsinline muted></video>
-            <div class="label" id="label2">Camera 2</div>
+
+        <div class="feeds-container">
+            <div class="video-box">
+                <video id="video1" autoplay playsinline muted></video>
+                <div class="label" id="label1">Camera 1</div>
+            </div>
+            <div class="video-box">
+                <video id="video2" autoplay playsinline muted></video>
+                <div class="label" id="label2">Camera 2</div>
+            </div>
         </div>
     </div>
 
     <script>
-        const startBtn = document.getElementById('startBtn');
-        const v1 = document.getElementById('video1');
-        const v2 = document.getElementById('video2');
-        const l1 = document.getElementById('label1');
-        const l2 = document.getElementById('label2');
+        const canvas = document.getElementById('mapCanvas');
+        const ctx = canvas.getContext('2d');
+        let cameras = [
+            { x: 50, y: 50, angle: 0, color: '#007bff', active: true },
+            { x: 310, y: 50, angle: 180, color: '#ff4757', active: true }
+        ];
 
-        async function initCameras() {
+        let isDragging = false;
+        let selectedCam = null;
+
+        // --- Camera Logic ---
+        document.getElementById('startBtn').addEventListener('click', async () => {
             try {
-                // Request initial permission to "see" the device list
                 await navigator.mediaDevices.getUserMedia({ video: true });
-                
                 const devices = await navigator.mediaDevices.enumerateDevices();
-                const videoDevices = devices.filter(device => device.kind === 'videoinput');
+                const videoDevices = devices.filter(d => d.kind === 'videoinput');
 
-                if (videoDevices.length < 2) {
-                    alert(`Only ${videoDevices.length} camera(s) detected. You need two cameras for the full experience.`);
-                }
+                const setup = async (idx, el, lbl) => {
+                    if (videoDevices[idx]) {
+                        const stream = await navigator.mediaDevices.getUserMedia({
+                            video: { deviceId: { exact: videoDevices[idx].deviceId } }
+                        });
+                        el.srcObject = stream;
+                        lbl.innerText = videoDevices[idx].label;
+                    }
+                };
 
-                // Setup Camera 1
-                if (videoDevices[0]) {
-                    const stream1 = await navigator.mediaDevices.getUserMedia({
-                        video: { deviceId: { exact: videoDevices[0].deviceId } }
-                    });
-                    v1.srcObject = stream1;
-                    l1.innerText = videoDevices[0].label || "Camera 1";
-                }
+                await setup(0, document.getElementById('video1'), document.getElementById('label1'));
+                await setup(1, document.getElementById('video2'), document.getElementById('label2'));
+                document.getElementById('startBtn').innerText = "Cameras Connected";
+            } catch (e) { alert("Camera access denied or not found."); }
+        });
 
-                // Setup Camera 2
-                if (videoDevices[1]) {
-                    const stream2 = await navigator.mediaDevices.getUserMedia({
-                        video: { deviceId: { exact: videoDevices[1].deviceId } }
-                    });
-                    v2.srcObject = stream2;
-                    l2.innerText = videoDevices[1].label || "Camera 2";
-                }
+        // --- Map Logic ---
+        function drawMap() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Draw grid
+            ctx.strokeStyle = '#eee';
+            for(let i=0; i<canvas.width; i+=20) { ctx.beginPath(); ctx.moveTo(i,0); ctx.lineTo(i,canvas.height); ctx.stroke(); }
+            for(let i=0; i<canvas.height; i+=20) { ctx.beginPath(); ctx.moveTo(0,i); ctx.lineTo(canvas.width,i); ctx.stroke(); }
 
-                startBtn.style.display = 'none'; // Hide button after start
+            cameras.forEach((cam, i) => {
+                ctx.save();
+                ctx.translate(cam.x, cam.y);
+                ctx.rotate(cam.angle * Math.PI / 180);
 
-            } catch (err) {
-                console.error("Error accessing media devices.", err);
-                alert("Error: Please ensure you have granted camera permissions.");
-            }
+                // Draw Field of View (FOV) cone
+                ctx.fillStyle = cam.color + '33';
+                ctx.beginPath();
+                ctx.moveTo(0,0);
+                ctx.arc(0, 0, 50, -Math.PI/4, Math.PI/4);
+                ctx.fill();
+
+                // Draw Camera Body
+                ctx.fillStyle = cam.color;
+                ctx.fillRect(-10, -8, 20, 16); // body
+                ctx.fillRect(8, -4, 6, 8);    // lens
+                
+                ctx.restore();
+                ctx.fillStyle = '#000';
+                ctx.fillText("Cam " + (i+1), cam.x - 15, cam.y + 25);
+            });
         }
 
-        startBtn.addEventListener('click', initCameras);
+        const getMousePos = (e) => {
+            const rect = canvas.getBoundingClientRect();
+            return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+        };
+
+        canvas.onmousedown = (e) => {
+            const pos = getMousePos(e);
+            // Simple logic: Left side of canvas controls Cam 1, Right side controls Cam 2
+            selectedCam = pos.x < canvas.width / 2 ? cameras[0] : cameras[1];
+            selectedCam.x = pos.x;
+            selectedCam.y = pos.y;
+            isDragging = true;
+            drawMap();
+        };
+
+        canvas.onmousemove = (e) => {
+            if (!isDragging) return;
+            const pos = getMousePos(e);
+            // Calculate angle based on mouse movement away from position
+            const dx = pos.x - selectedCam.x;
+            const dy = pos.y - selectedCam.y;
+            selectedCam.angle = Math.atan2(dy, dx) * 180 / Math.PI;
+            drawMap();
+        };
+
+        window.onmouseup = () => { isDragging = false; };
+
+        drawMap(); // Initial draw
     </script>
 </body>
 </html>
