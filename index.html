@@ -1,23 +1,120 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <title>Home</title>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width" />
-    <!--
-      Need a visual blank slate?
-      Remove all code in `styles.css`!
-    -->
-    <link rel="stylesheet" href="styles.css" />
-    <script type="module" src="script.js"></script>
-  </head>
-  <body>
-    <nav>
-      <a href="/" aria-current="page">Home</a>
-      <a href="/page2.html">Other page</a>
-    </nav>
-    <main>
-      <h1>Home page</h1>
-    </main>
-  </body>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dual Camera Feed</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background-color: #1a1a1a;
+            color: white;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 20px;
+            width: 100%;
+            max-width: 1200px;
+        }
+        .video-box {
+            background: #000;
+            border-radius: 8px;
+            overflow: hidden;
+            border: 2px solid #444;
+        }
+        video {
+            width: 100%;
+            height: auto;
+            display: block;
+            background: #222;
+        }
+        .label {
+            padding: 10px;
+            text-align: center;
+            background: #333;
+            font-weight: bold;
+        }
+        button {
+            padding: 12px 24px;
+            font-size: 16px;
+            cursor: pointer;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        button:hover { background-color: #0056b3; }
+    </style>
+</head>
+<body>
+
+    <h1>Dual Camera Monitor</h1>
+    <button id="startBtn">Initialize Cameras</button>
+
+    <div class="container">
+        <div class="video-box">
+            <video id="video1" autoplay playsinline muted></video>
+            <div class="label" id="label1">Camera 1</div>
+        </div>
+        <div class="video-box">
+            <video id="video2" autoplay playsinline muted></video>
+            <div class="label" id="label2">Camera 2</div>
+        </div>
+    </div>
+
+    <script>
+        const startBtn = document.getElementById('startBtn');
+        const v1 = document.getElementById('video1');
+        const v2 = document.getElementById('video2');
+        const l1 = document.getElementById('label1');
+        const l2 = document.getElementById('label2');
+
+        async function initCameras() {
+            try {
+                // Request initial permission to "see" the device list
+                await navigator.mediaDevices.getUserMedia({ video: true });
+                
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                const videoDevices = devices.filter(device => device.kind === 'videoinput');
+
+                if (videoDevices.length < 2) {
+                    alert(`Only ${videoDevices.length} camera(s) detected. You need two cameras for the full experience.`);
+                }
+
+                // Setup Camera 1
+                if (videoDevices[0]) {
+                    const stream1 = await navigator.mediaDevices.getUserMedia({
+                        video: { deviceId: { exact: videoDevices[0].deviceId } }
+                    });
+                    v1.srcObject = stream1;
+                    l1.innerText = videoDevices[0].label || "Camera 1";
+                }
+
+                // Setup Camera 2
+                if (videoDevices[1]) {
+                    const stream2 = await navigator.mediaDevices.getUserMedia({
+                        video: { deviceId: { exact: videoDevices[1].deviceId } }
+                    });
+                    v2.srcObject = stream2;
+                    l2.innerText = videoDevices[1].label || "Camera 2";
+                }
+
+                startBtn.style.display = 'none'; // Hide button after start
+
+            } catch (err) {
+                console.error("Error accessing media devices.", err);
+                alert("Error: Please ensure you have granted camera permissions.");
+            }
+        }
+
+        startBtn.addEventListener('click', initCameras);
+    </script>
+</body>
 </html>
