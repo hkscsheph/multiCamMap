@@ -82,11 +82,40 @@
         const INTERSECT_THRESHOLD = 40; 
 
         // 🌟 這裡換成你的 MJPEG 攝影機真實網址
-        let cameras = [
-            { id: 1, x: 60, y: 300, angle: -45, color: '#007bff', detections: [], streamUrl: 'http://admin:ictipcam1@192.168.120.3/ISAPI/Streaming/channels/102/httpPreview' },
-            { id: 2, x: 290, y: 300, angle: -135, color: '#ff4757', detections: [], streamUrl: 'http://admin:ictipcam1@192.168.120.4/ISAPI/Streaming/channels/102/httpPreview' },
-            { id: 3, x: 175, y: 50, angle: 90, color: '#9b59b6', detections: [], streamUrl: 'http://admin:ictipcam1@192.168.120.5/ISAPI/Streaming/channels/102/httpPreview' }
-        ];
+        let cameras = 
+        //     { id: 1, x: 60, y: 50, angle: -45, color: '#007bff', detections: [], streamUrl: 'http://localhost:3000/stream/1' },
+        //     { id: 2, x: 175, y: 50, angle: -135, color: '#ff4757', detections: [], streamUrl: 'http://localhost:3000/stream/2' },
+        //     { id: 3, x: 35, y: 200, angle: 90, color: '#9b59b6', detections: [], streamUrl: 'http://localhost:3000/stream/3' }
+        // ];
+        [
+  {
+    "id": 1,
+    "x": 57.33333206176758,
+    "y": 35.07291603088379,
+    "angle": 56.309932474020215,
+    "color": "#007bff",
+    detections: [],
+    "streamUrl": "http://localhost:3000/stream/1"
+  },
+  {
+    "id": 2,
+    "x": 272.3333320617676,
+    "y": 22.40625,
+    "angle": 112.16634582208246,
+    "color": "#ff4757",
+    detections: [],
+    "streamUrl": "http://localhost:3000/stream/2"
+  },
+  {
+    "id": 3,
+    "x": 74.33333206176758,
+    "y": 323.40625,
+    "angle": -19.79887635452493,
+    "color": "#9b59b6",
+    detections: [],
+    "streamUrl": "http://localhost:3000/stream/3"
+  }
+]
 
         const mCanvas = document.getElementById('mapCanvas');
         const mCtx = mCanvas.getContext('2d');

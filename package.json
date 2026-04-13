@@ -3,6 +3,24 @@
     "start": "servor --reload"
   },
   "dependencies": {
+    "axios": "^1.15.0",
+    "express": "^5.2.1",
     "servor": "^4.0.2"
-  }
+  },
+  "name": "multicammap",
+  "version": "1.0.0",
+  "description": "[Edit in StackBlitz next generation editor ⚡️](https://stackblitz.com/~/github.com/hkscsheph/multiCamMap)",
+  "main": "proxy.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hkscsheph/multiCamMap.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/hkscsheph/multiCamMap/issues"
+  },
+  "homepage": "https://github.com/hkscsheph/multiCamMap#readme"
 }
