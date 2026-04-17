@@ -229,6 +229,42 @@
             </div>
         </div>
     </div>
+        <div class="feeds-container">
+            <div class="video-box">
+                <div class="no-signal">No Signal</div>
+                <img id="stream1" class="stream-source" crossorigin="anonymous" />
+                <canvas id="overlay1" class="overlay"></canvas>
+            </div>
+            <div class="video-box">
+                <div class="no-signal">No Signal</div>
+                <img id="stream2" class="stream-source" crossorigin="anonymous" />
+                <canvas id="overlay2" class="overlay"></canvas>
+            </div>
+            <div class="video-box">
+                <div class="no-signal">No Signal</div>
+                <img id="stream3" class="stream-source" crossorigin="anonymous" />
+                <canvas id="overlay3" class="overlay"></canvas>
+            </div>
+        </div>
+    </div>
+        <div class="feeds-container">
+            <div class="video-box">
+                <div class="no-signal">No Signal</div>
+                <img id="stream1" class="stream-source" crossorigin="anonymous" />
+                <canvas id="overlay1" class="overlay"></canvas>
+            </div>
+            <div class="video-box">
+                <div class="no-signal">No Signal</div>
+                <img id="stream2" class="stream-source" crossorigin="anonymous" />
+                <canvas id="overlay2" class="overlay"></canvas>
+            </div>
+            <div class="video-box">
+                <div class="no-signal">No Signal</div>
+                <img id="stream3" class="stream-source" crossorigin="anonymous" />
+                <canvas id="overlay3" class="overlay"></canvas>
+            </div>
+        </div>
+    </div>
 
     <script>
         let model;
@@ -442,13 +478,17 @@
 
         // 5. Interactivity -> Handle webcam, MJPEG, and screenshare
         document.getElementById('startBtn').addEventListener('click', async () => {
+            console.log('Start button clicked');
             const configs = [
                 { id: 1, sourceType: document.getElementById('cam1Source').value, url: document.getElementById('cam1Url').value },
                 { id: 2, sourceType: document.getElementById('cam2Source').value, url: document.getElementById('cam2Url').value },
                 { id: 3, sourceType: document.getElementById('cam3Source').value, url: document.getElementById('cam3Url').value }
             ];
 
+            console.log('Configs:', configs);
+
             for (const config of configs) {
+                console.log(`Processing camera ${config.id}, source: ${config.sourceType}`);
                 const imgElement = document.getElementById(`stream${config.id}`);
                 const canvas = document.getElementById(`overlay${config.id}`);
                 const videoBox = canvas.closest('.video-box');
@@ -461,30 +501,53 @@
                             alert(`Camera ${config.id}: Please enter MJPEG URL`);
                             return;
                         }
+                        console.log(`Setting MJPEG source for camera ${config.id}`);
                         imgElement.src = config.url;
                         imgElement.style.display = 'block';
                         videoBox.classList.add('active');
                         processCamera(imgElement, canvas, camObj);
                     } else if (config.sourceType === 'webcam') {
                         // Webcam: Use getUserMedia
-                        const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
-                        const video = document.createElement('video');
-                        video.srcObject = stream;
-                        video.play();
-                        videoStreams[config.id] = video;
-                        imgElement.style.display = 'none';
-                        videoBox.classList.add('active');
-                        processWebcamCamera(video, canvas, camObj);
+                        try {
+                            console.log(`Requesting webcam for camera ${config.id}`);
+                            const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
+                            const video = document.createElement('video');
+                            video.srcObject = stream;
+                            video.play();
+                            videoStreams[config.id] = video;
+                            imgElement.style.display = 'none';
+                            videoBox.classList.add('active');
+                            processWebcamCamera(video, canvas, camObj);
+                            console.log(`Webcam started for camera ${config.id}`);
+                        } catch (err) {
+                            console.error(`Camera ${config.id} webcam error:`, err);
+                            document.getElementById('status').innerText = `❌ Webcam Error: ${err.message}`;
+                        }
                     } else if (config.sourceType === 'screenshare') {
                         // Screen Share: Use getDisplayMedia
-                        const stream = await navigator.mediaDevices.getDisplayMedia({ video: { cursor: 'always' } });
-                        const video = document.createElement('video');
-                        video.srcObject = stream;
-                        video.play();
-                        videoStreams[config.id] = video;
-                        imgElement.style.display = 'none';
-                        videoBox.classList.add('active');
-                        processWebcamCamera(video, canvas, camObj);
+                        try {
+                            console.log(`Requesting screen share for camera ${config.id}`);
+                            const stream = await navigator.mediaDevices.getDisplayMedia({ 
+                                video: { cursor: 'always' },
+                                audio: false
+                            });
+                            console.log(`Screen share granted for camera ${config.id}`);
+                            const video = document.createElement('video');
+                            video.srcObject = stream;
+                            video.play();
+                            videoStreams[config.id] = video;
+                            imgElement.style.display = 'none';
+                            videoBox.classList.add('active');
+                            processWebcamCamera(video, canvas, camObj);
+                            console.log(`Screen share started for camera ${config.id}`);
+                        } catch (err) {
+                            console.error(`Camera ${config.id} screenshare error:`, err);
+                            if (err.name === 'NotAllowedError') {
+                                document.getElementById('status').innerText = `❌ Screen Share Cancelled`;
+                            } else {
+                                document.getElementById('status').innerText = `❌ Screen Share Error: ${err.message}`;
+                            }
+                        }
                     }
                 } catch (err) {
                     console.error(`Camera ${config.id} error:`, err);
@@ -502,17 +565,121 @@
             return { x: e.clientX - r.left, y: e.clientY - r.top };
         };
 
-        // Handle source type changes
+        // Handle source type changes - trigger connection immediately
         [1, 2, 3].forEach(camId => {
             const sourceSelect = document.getElementById(`cam${camId}Source`);
             const urlInput = document.getElementById(`cam${camId}Url`);
 
+            const connectCamera = async () => {
+                const sourceType = sourceSelect.value;
+                const url = urlInput.value;
+                const imgElement = document.getElementById(`stream${camId}`);
+                const canvas = document.getElementById(`overlay${camId}`);
+                const videoBox = canvas.closest('.video-box');
+                const camObj = cameras[camId - 1];
+
+                console.log(`Camera ${camId} source changed to: ${sourceType}`);
+
+                try {
+                    if (sourceType === 'mjpeg') {
+                        if (!url) {
+                            document.getElementById('status').innerText = `⚠️ Camera ${camId}: Enter MJPEG URL`;
+                            return;
+                        }
+                        console.log(`Connecting MJPEG for camera ${camId}: ${url}`);
+                        imgElement.src = url;
+                        imgElement.style.display = 'block';
+                        videoBox.classList.add('active');
+                        processCamera(imgElement, canvas, camObj);
+                        document.getElementById('status').innerText = `✅ Camera ${camId}: MJPEG Connected`;
+                        if (!document.getElementById('startBtn').style.display || document.getElementById('startBtn').style.display === 'block') {
+                            drawMap();
+                        }
+                    } else if (sourceType === 'webcam') {
+                        console.log(`Requesting webcam for camera ${camId}`);
+                        const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
+                        const video = document.createElement('video');
+                        video.srcObject = stream;
+                        video.play();
+                        videoStreams[camId] = video;
+                        imgElement.style.display = 'none';
+                        videoBox.classList.add('active');
+                        processWebcamCamera(video, canvas, camObj);
+                        document.getElementById('status').innerText = `✅ Camera ${camId}: Webcam Connected`;
+                        if (!document.getElementById('startBtn').style.display || document.getElementById('startBtn').style.display === 'block') {
+                            drawMap();
+                        }
+                    } else if (sourceType === 'screenshare') {
+                        console.log(`Requesting screen share for camera ${camId}`);
+                        const stream = await navigator.mediaDevices.getDisplayMedia({ 
+                            video: { cursor: 'always' },
+                            audio: false
+                        });
+                        console.log(`Screen share granted for camera ${camId}`);
+                        const video = document.createElement('video');
+                        video.srcObject = stream;
+                        video.play();
+                        videoStreams[camId] = video;
+                        imgElement.style.display = 'none';
+                        videoBox.classList.add('active');
+                        processWebcamCamera(video, canvas, camObj);
+                        document.getElementById('status').innerText = `✅ Camera ${camId}: Screen Share Connected`;
+                        if (!document.getElementById('startBtn').style.display || document.getElementById('startBtn').style.display === 'block') {
+                            drawMap();
+                        }
+                    }
+                } catch (err) {
+                    console.error(`Camera ${camId} error:`, err);
+                    if (err.name === 'NotAllowedError') {
+                        document.getElementById('status').innerText = `❌ Camera ${camId}: Permission Denied`;
+                    } else if (err.name === 'NotFoundError') {
+                        document.getElementById('status').innerText = `❌ Camera ${camId}: Device Not Found`;
+                    } else {
+                        document.getElementById('status').innerText = `❌ Camera ${camId}: ${err.message}`;
+                    }
+                }
+            };
+
+            sourceSelect.addEventListener('change', connectCamera);
+            
+            // Show/hide URL input based on source type
             sourceSelect.addEventListener('change', (e) => {
                 urlInput.style.display = e.target.value === 'mjpeg' ? 'block' : 'none';
+            });
+            
+            // For MJPEG, also trigger on URL input (with debounce)
+            let urlTimeout;
+            urlInput.addEventListener('change', () => {
+                clearTimeout(urlTimeout);
+                urlTimeout = setTimeout(connectCamera, 500);
             });
 
             // Initialize visibility
             urlInput.style.display = sourceSelect.value === 'mjpeg' ? 'block' : 'none';
+        });
+
+        // Test screen share button
+        const testScreenShareBtn = document.createElement('button');
+        testScreenShareBtn.textContent = 'TEST SCREEN SHARE';
+        testScreenShareBtn.style.marginTop = '10px';
+        testScreenShareBtn.style.background = '#ff6b6b';
+        document.querySelector('.panel').appendChild(testScreenShareBtn);
+
+        testScreenShareBtn.addEventListener('click', async () => {
+            console.log('Test screen share clicked');
+            try {
+                console.log('Requesting display media...');
+                const stream = await navigator.mediaDevices.getDisplayMedia({ 
+                    video: { cursor: 'always' },
+                    audio: false
+                });
+                console.log('Display media granted:', stream);
+                alert('Screen share successful!');
+                stream.getTracks().forEach(track => track.stop());
+            } catch (err) {
+                console.error('Screen share error:', err);
+                alert(`Error: ${err.name} - ${err.message}`);
+            }
         });
 
         mCanvas.onmousedown = (e) => {
