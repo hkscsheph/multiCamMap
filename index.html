@@ -32,42 +32,53 @@
         .ui-overlay {
             position: absolute;
             top: 0;
-            left: 0;
-            width: 100%;
+            right: 0;
+            width: 350px;
+            height: 100vh;
             z-index: 10;
             background: rgba(20, 20, 20, 0.95);
-            border-bottom: 2px solid #333;
+            border-left: 2px solid #333;
             transition: transform 0.4s cubic-bezier(0.165, 0.84, 0.44, 1);
             backdrop-filter: blur(10px);
-            overflow: visible; /* Ensure handle is not clipped */
+            overflow: visible;
+        }
+
+        /* Full height scrollable container */
+        .sidebar-content {
+            height: 100vh;
+            overflow-y: auto;
+            scrollbar-width: none; /* Firefox */
+            -ms-overflow-style: none;  /* IE and Edge */
+        }
+
+        .sidebar-content::-webkit-scrollbar {
+            display: none; /* Chrome, Safari and Opera */
         }
 
         .ui-overlay.hidden {
-            /* Move up but leave the border area */
-            transform: translateY(calc(-100% + 2px)); 
+            transform: translateX(calc(100% - 2px)); 
         }
 
         .toggle-handle {
             position: absolute;
-            top: 100%; /* Position at the very bottom edge of panel */
-            left: 50%;
-            transform: translateX(-50%);
+            top: 50%;
+            left: -30px; /* Position on the left edge of the sidebar */
+            transform: translateY(-50%);
             background: #27ae60;
             color: #fff;
-            padding: 5px 40px;
-            border-radius: 0 0 15px 15px;
+            padding: 30px 8px;
+            border-radius: 10px 0 0 10px;
             cursor: pointer;
-            font-size: 18px;
+            font-size: 16px;
             border: none;
-            z-index: 100; /* Extremely high z-index */
-            box-shadow: 0 4px 15px rgba(0,0,0,0.6);
-            display: block !important;
+            z-index: 100;
+            box-shadow: -4px 0 15px rgba(0,0,0,0.6);
             line-height: 1;
         }
 
         .feeds-container {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            display: flex;
+            flex-direction: column;
             gap: 15px;
             padding: 15px;
         }
@@ -78,6 +89,7 @@
             border-radius: 8px;
             overflow: hidden;
             border: 2px solid #333;
+            width: 100%;
             aspect-ratio: 16 / 9;
             display: flex;
             align-items: center;
@@ -209,27 +221,23 @@
         <!-- Dynamic legend -->
     </div>
 
-    <button id="copyConfigBtn" style="position: absolute; bottom: 20px; right: 20px; z-index: 5; background: #34495e; padding: 10px 20px; font-size: 11px;">📋 COPY CONFIG</button>
+    
 
     <div id="uiOverlay" class="ui-overlay">
-        <button id="toggleBtn" class="toggle-handle">▲</button>
+        <button id="toggleBtn" class="toggle-handle">▶</button>
         
-        <div style="max-height: 85vh; overflow-y: auto;">
+        <div class="sidebar-content">
             <div class="config-bar">
-                <h3>Intelligence Configuration</h3>
+                <h3>Config</h3>
                 <div>
-                    <button id="importBtn" style="background: #e67e22; margin-right: 10px;">📥 IMPORT</button>
-                    <button id="addCamBtn" style="background: #3498db; margin-right: 10px;">+ ADD CAMERA</button>
-                    <button id="startBtn">CONNECT ALL</button>
+                    <button id="copyConfigBtn" style="background: #34495e; padding: 10px 20px; font-size: 11px;">📋</button>
+                    <button id="importBtn" style="background: #e67e22;">📥</button>
+                    <button id="addCamBtn" style="background: #3498db;">➕</button>
                 </div>
             </div>
 
-            <div id="camConfigs" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 15px; padding: 15px;">
-                <!-- Dynamic camera configs -->
-            </div>
-
-            <div id="feedsContainer" class="feeds-container">
-                <!-- Dynamic video boxes -->
+            <div id="camList" style="padding: 15px; display: flex; flex-direction: column; gap: 20px;">
+                <!-- Each camera's config + feed will appear here -->
             </div>
         </div>
     </div>
@@ -239,6 +247,9 @@
         let isDragging = false;
         let selectedCam = null;
         let calibrationMode = null; 
+        
+        const mapImg = new Image();
+        mapImg.src = 'bigCompRm.webp';
         
         const INTERSECT_THRESHOLD = 40;
         const CAM_COLORS = ['#007bff', '#ff4757', '#9b59b6', '#2ecc71', '#f1c40f', '#e67e22', '#1abc9c', '#e74c3c'];
@@ -258,7 +269,7 @@
         // Toggle UI
         toggleBtn.onclick = () => {
             uiOverlay.classList.toggle('hidden');
-            toggleBtn.innerText = uiOverlay.classList.contains('hidden') ? '▼' : '▲';
+            toggleBtn.innerText = uiOverlay.classList.contains('hidden') ? '◀' : '▶';
         };
 
         // Resize map to viewport
@@ -299,15 +310,21 @@
         }
 
         function renderCamUI(cam) {
+            const camWrapper = document.createElement('div');
+            camWrapper.id = `camWrapper${cam.id}`;
+            camWrapper.style.background = 'rgba(255,255,255,0.05)';
+            camWrapper.style.padding = '12px';
+            camWrapper.style.borderRadius = '8px';
+            camWrapper.style.display = 'flex';
+            camWrapper.style.flexDirection = 'column';
+            camWrapper.style.gap = '10px';
+
             const card = document.createElement('div');
-            card.style.background = 'rgba(255,255,255,0.05)';
-            card.style.padding = '12px';
-            card.style.borderRadius = '8px';
             card.id = `camCard${cam.id}`;
             card.innerHTML = `
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
                     <label style="font-weight: bold; color: ${cam.color}; font-size: 13px;">Camera ${cam.id}</label>
-                    <button onclick="removeCamera(${cam.id})" style="padding: 2px 8px; background: #c0392b; font-size: 9px;">DEL</button>
+                    <button onclick="removeCamera(${cam.id})" style="padding: 2px 8px; background: #c0392b; font-size: 14side px;">⛔</button>
                 </div>
                 <select id="sourceType${cam.id}" onchange="updateCamSource(${cam.id})"
                     style="width: 100%; padding: 5px; background: #000; color: #00ff41; border: 1px solid #444; font-size: 11px;">
@@ -330,7 +347,7 @@
                     <button id="calibBtn${cam.id}" onclick="startCalibration(${cam.id})" style="flex: 1; padding: 4px; font-size: 10px; background: #f39c12;">CALIB</button>
                 </div>
             `;
-            camConfigs.appendChild(card);
+            camWrapper.appendChild(card);
 
             const feedBox = document.createElement('div');
             feedBox.className = 'video-box';
@@ -340,13 +357,14 @@
                 <img id="stream${cam.id}" class="stream-source" crossorigin="anonymous" style="display:none" />
                 <canvas id="overlay${cam.id}" class="overlay" onclick="handleFeedClick(${cam.id}, event)"></canvas>
             `;
-            feedsContainer.appendChild(feedBox);
+            camWrapper.appendChild(feedBox);
+            
+            document.getElementById('camList').appendChild(camWrapper);
         }
 
         function removeCamera(id) {
             cameras = cameras.filter(c => c.id !== id);
-            document.getElementById(`camCard${id}`).remove();
-            document.getElementById(`feedBox${id}`).remove();
+            document.getElementById(`camWrapper${id}`).remove();
             if (videoStreams[id]) {
                 videoStreams[id].getTracks().forEach(t => t.stop());
                 delete videoStreams[id];
@@ -397,6 +415,16 @@
                     const stream = await navigator.mediaDevices.getUserMedia({ video: true });
                     const video = document.createElement('video');
                     video.srcObject = stream;
+                    video.muted = true; // Essential for autoplay in many browsers
+                    video.setAttribute('playsinline', ''); 
+                    video.style.width = '100%';
+                    video.style.height = '100%';
+                    video.style.objectFit = 'contain';
+                    
+                    // Clear previous and append
+                    videoBox.querySelectorAll('video').forEach(v => v.remove());
+                    videoBox.appendChild(video);
+                    
                     video.play();
                     videoStreams[id] = stream;
                     imgElement.style.display = 'none';
@@ -406,6 +434,13 @@
                     const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
                     const video = document.createElement('video');
                     video.srcObject = stream;
+                    video.style.width = '100%';
+                    video.style.height = '100%';
+                    video.style.objectFit = 'contain';
+                    
+                    videoBox.querySelectorAll('video').forEach(v => v.remove());
+                    videoBox.appendChild(video);
+                    
                     video.play();
                     videoStreams[id] = stream;
                     imgElement.style.display = 'none';
@@ -477,8 +512,20 @@
         function drawMap() {
             mCtx.clearRect(0, 0, mCanvas.width, mCanvas.height);
             
-            // Grid
-            mCtx.strokeStyle = '#222'; mCtx.lineWidth = 1;
+            // Draw background image (Full Width)
+            if (mapImg.complete && mapImg.naturalWidth > 0) {
+                const imgRatio = mapImg.naturalHeight / mapImg.naturalWidth;
+                const drawWidth = mCanvas.width;
+                const drawHeight = drawWidth * imgRatio;
+                mCtx.drawImage(mapImg, 0, 0, drawWidth, drawHeight);
+                
+                // Dim the image slightly for better visibility of overlays
+                mCtx.fillStyle = 'rgba(0,0,0,0.3)';
+                mCtx.fillRect(0, 0, drawWidth, drawHeight);
+            }
+
+            // Grid (optional, keep it subtle)
+            mCtx.strokeStyle = 'rgba(255,255,255,0.05)'; mCtx.lineWidth = 1;
             for (let i = 0; i < mCanvas.width; i += 100) {
                 mCtx.beginPath(); mCtx.moveTo(i, 0); mCtx.lineTo(i, mCanvas.height); mCtx.stroke();
             }
@@ -542,16 +589,12 @@
             calibrationMode = { camId: id, step: 'video', pixelX: null };
             document.getElementById('status').innerText = `🎯 Calibration: Click object in Video ${id}`;
             document.getElementById(`feedBox${id}`).classList.add('calibrating');
-            uiOverlay.classList.add('hidden'); // Auto hide UI to show map
-            toggleBtn.innerText = '▼';
         }
 
         function stopCalibration(id) {
             calibrationMode = null;
             document.getElementById('status').innerText = "Calibration Done.";
             document.getElementById(`feedBox${id}`).classList.remove('calibrating');
-            uiOverlay.classList.remove('hidden');
-            toggleBtn.innerText = '▲';
         }
 
         function handleFeedClick(id, event) {
@@ -641,7 +684,7 @@
         };
 
         document.getElementById('addCamBtn').onclick = addCamera;
-        document.getElementById('startBtn').onclick = () => cameras.forEach(c => connectSingle(c.id));
+        //document.getElementById('startBtn').onclick = () => cameras.forEach(c => connectSingle(c.id));
 
         addCamera();
         drawMap();
