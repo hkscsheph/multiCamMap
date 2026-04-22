@@ -682,20 +682,24 @@
             const camFOVRad = (camObj.fov || 60) * Math.PI / 180;
             camObj.detections = [];
 
+            // Some environments/versions of COCO-SSD return coordinates that appear halved.
+            // We apply a multiplier to correct this as requested.
+            const mult = (currentEngine === 'cocossd') ? 2 : 1;
+
             predictions.forEach(p => {
                 if (p.class === 'person' && p.score > 0.5) {
                     const [x, y, w, h] = p.bbox;
                     ctx.strokeStyle = camObj.color;
                     
-                    // 4. Map natural AI coordinates to display pixels
+                    // 4. Map natural AI coordinates to display pixels with multiplier
                     ctx.strokeRect(
-                        offsetX + x * scale,
-                        offsetY + y * scale,
-                        w * scale,
-                        h * scale
+                        offsetX + (x * mult) * scale,
+                        offsetY + (y * mult) * scale,
+                        (w * mult) * scale,
+                        (h * mult) * scale
                     );
 
-                    const personCenterX = x + w / 2;
+                    const personCenterX = (x + w / 2) * mult;
                     const offsetAngle = (personCenterX / width - 0.5) * camFOVRad;
                     const camAngleRad = camObj.angle * Math.PI / 180;
                     camObj.detections.push({ angle: camAngleRad + offsetAngle });
