@@ -230,6 +230,7 @@
             <div class="config-bar">
                 <h3>Config</h3>
                 <div>
+                    <button id="visibilityBtn" title="Toggle High Visibility" style="background: #7f8c8d; padding: 10px 12px; font-size: 11px;">🔆</button>
                     <button id="copyConfigBtn" style="background: #34495e; padding: 10px 20px; font-size: 11px;">📋</button>
                     <button id="importBtn" style="background: #e67e22;">📥</button>
                     <button id="addCamBtn" style="background: #3498db;">➕</button>
@@ -247,6 +248,7 @@
         let isDragging = false;
         let selectedCam = null;
         let calibrationMode = null; 
+        let highVisibilityMode = false;
         
         const mapImg = new Image();
         mapImg.src = 'bigCompRm.webp';
@@ -265,11 +267,17 @@
         const camLegend = document.getElementById('camLegend');
         const uiOverlay = document.getElementById('uiOverlay');
         const toggleBtn = document.getElementById('toggleBtn');
+        const visibilityBtn = document.getElementById('visibilityBtn');
 
         // Toggle UI
         toggleBtn.onclick = () => {
             uiOverlay.classList.toggle('hidden');
             toggleBtn.innerText = uiOverlay.classList.contains('hidden') ? '◀' : '▶';
+        };
+
+        visibilityBtn.onclick = () => {
+            highVisibilityMode = !highVisibilityMode;
+            visibilityBtn.style.background = highVisibilityMode ? '#f1c40f' : '#7f8c8d';
         };
 
         // Resize map to viewport
@@ -299,12 +307,14 @@
                 color,
                 detections: [],
                 sourceType: 'webcam',
+                deviceId: '',
                 streamUrl: '',
                 active: false
             };
             
             cameras.push(newCam);
             renderCamUI(newCam);
+            updateCamSource(id);
             updateLegend();
             updateConfigOutput();
         }
@@ -324,17 +334,21 @@
             card.innerHTML = `
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
                     <label style="font-weight: bold; color: ${cam.color}; font-size: 13px;">Camera ${cam.id}</label>
-                    <button onclick="removeCamera(${cam.id})" style="padding: 2px 8px; background: #c0392b; font-size: 14side px;">⛔</button>
+                    <button onclick="removeCamera(${cam.id})" style="padding: 2px 8px; background: #c0392b; font-size: 14px;">⛔</button>
                 </div>
                 <select id="sourceType${cam.id}" onchange="updateCamSource(${cam.id})"
                     style="width: 100%; padding: 5px; background: #000; color: #00ff41; border: 1px solid #444; font-size: 11px;">
-                    <option value="webcam">Webcam</option>
-                    <option value="mjpeg">IP Camera (MJPEG)</option>
-                    <option value="screenshare">Screen</option>
+                    <option value="webcam" ${cam.sourceType === 'webcam' ? 'selected' : ''}>Webcam</option>
+                    <option value="mjpeg" ${cam.sourceType === 'mjpeg' ? 'selected' : ''}>IP Camera (MJPEG)</option>
+                    <option value="screenshare" ${cam.sourceType === 'screenshare' ? 'selected' : ''}>Screen</option>
                 </select>
-                <input id="urlInput${cam.id}" type="text" placeholder="URL" 
-                    style="display: none; width: 100%; padding: 5px; margin-top: 5px; background: #000; color: #00ff41; border: 1px solid #444; font-size: 11px;"
+                <input id="urlInput${cam.id}" type="text" placeholder="URL" value="${cam.streamUrl || ''}"
+                    style="display: ${cam.sourceType === 'mjpeg' ? 'block' : 'none'}; width: 100%; padding: 5px; margin-top: 5px; background: #000; color: #00ff41; border: 1px solid #444; font-size: 11px;"
                     onchange="updateCamUrl(${cam.id}, this.value)" />
+                <select id="deviceSelector${cam.id}" 
+                    style="display: ${cam.sourceType === 'webcam' ? 'block' : 'none'}; width: 100%; padding: 5px; margin-top: 5px; background: #000; color: #00ff41; border: 1px solid #444; font-size: 11px;"
+                    onchange="updateCamDeviceId(${cam.id}, this.value)">
+                </select>
                 <div style="margin: 8px 0;">
                     <div style="display:flex; justify-content:space-between; font-size: 10px; color: #888;">
                         <span>FOV</span><span id="fovVal${cam.id}">${cam.fov}°</span>
@@ -360,6 +374,9 @@
             camWrapper.appendChild(feedBox);
             
             document.getElementById('camList').appendChild(camWrapper);
+            
+            // Initial source setup
+            if (cam.sourceType === 'webcam') populateDeviceSelector(cam.id);
         }
 
         function removeCamera(id) {
@@ -378,6 +395,38 @@
             const sourceType = document.getElementById(`sourceType${id}`).value;
             cam.sourceType = sourceType;
             document.getElementById(`urlInput${id}`).style.display = sourceType === 'mjpeg' ? 'block' : 'none';
+            
+            const deviceSelector = document.getElementById(`deviceSelector${id}`);
+            if (deviceSelector) {
+                deviceSelector.style.display = sourceType === 'webcam' ? 'block' : 'none';
+                if (sourceType === 'webcam') populateDeviceSelector(id);
+            }
+        }
+
+        function updateCamDeviceId(id, deviceId) {
+            const cam = cameras.find(c => c.id === id);
+            cam.deviceId = deviceId;
+        }
+
+        async function populateDeviceSelector(id) {
+            const cam = cameras.find(c => c.id === id);
+            const selector = document.getElementById(`deviceSelector${id}`);
+            if (!selector) return;
+
+            try {
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                const videoDevices = devices.filter(device => device.kind === 'videoinput');
+                
+                selector.innerHTML = videoDevices.map(device => 
+                    `<option value="${device.deviceId}" ${cam.deviceId === device.deviceId ? 'selected' : ''}>${device.label || `Camera ${device.deviceId.slice(0, 5)}...`}</option>`
+                ).join('');
+                
+                if (videoDevices.length > 0 && !cam.deviceId) {
+                    cam.deviceId = selector.value;
+                }
+            } catch (err) {
+                console.error("Error enumerating devices:", err);
+            }
         }
 
         function updateCamUrl(id, url) {
@@ -412,7 +461,10 @@
                     videoBox.classList.add('active');
                     processCamera(imgElement, canvas, cam);
                 } else if (cam.sourceType === 'webcam') {
-                    const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                    const constraints = {
+                        video: cam.deviceId ? { deviceId: { exact: cam.deviceId } } : true
+                    };
+                    const stream = await navigator.mediaDevices.getUserMedia(constraints);
                     const video = document.createElement('video');
                     video.srcObject = stream;
                     video.muted = true; // Essential for autoplay in many browsers
@@ -497,6 +549,20 @@
             });
         }
 
+        function isPointInFOV(cam, p) {
+            const angleToPoint = Math.atan2(p.y - cam.y, p.x - cam.x) * 180 / Math.PI;
+            let diff = (angleToPoint - cam.angle + 180 + 360) % 360 - 180;
+            return Math.abs(diff) <= (cam.fov / 2);
+        }
+
+        function doesCamSeePoint(cam, p) {
+            const angleToPoint = Math.atan2(p.y - cam.y, p.x - cam.x);
+            return cam.detections.some(det => {
+                let diff = (det.angle - angleToPoint + Math.PI + 4 * Math.PI) % (2 * Math.PI) - Math.PI;
+                return Math.abs(diff) < 0.05; // Tolerance for ray intersection precision
+            });
+        }
+
         function getIntersection(cam1, det1, cam2, det2) {
             const x1 = cam1.x, y1 = cam1.y, a1 = det1.angle;
             const x2 = cam2.x, y2 = cam2.y, a2 = det2.angle;
@@ -538,19 +604,33 @@
                 cam.detections.forEach(det => {
                     mCtx.beginPath(); mCtx.moveTo(cam.x, cam.y);
                     mCtx.lineTo(cam.x + 2000 * Math.cos(det.angle), cam.y + 2000 * Math.sin(det.angle));
-                    mCtx.strokeStyle = cam.color + '33'; mCtx.lineWidth = 1; mCtx.stroke();
+                    mCtx.strokeStyle = cam.color + (highVisibilityMode ? '' : '33'); 
+                    mCtx.lineWidth = highVisibilityMode ? 2 : 1;
+                    mCtx.stroke();
                 });
             });
 
             // Triangulation
             const targets = [];
-            if (cameras.filter(c => c.detections.length > 0).length >= 2) {
-                for (let i = 0; i < cameras.length; i++) {
-                    for (let j = i + 1; j < cameras.length; j++) {
-                        cameras[i].detections.forEach(d1 => {
-                            cameras[j].detections.forEach(d2 => {
-                                const p = getIntersection(cameras[i], d1, cameras[j], d2);
-                                if (p) targets.push(p);
+            const activeCams = cameras.filter(c => c.detections.length > 0);
+            if (activeCams.length >= 2) {
+                for (let i = 0; i < activeCams.length; i++) {
+                    for (let j = i + 1; j < activeCams.length; j++) {
+                        const cam1 = activeCams[i];
+                        const cam2 = activeCams[j];
+                        cam1.detections.forEach(d1 => {
+                            cam2.detections.forEach(d2 => {
+                                const p = getIntersection(cam1, d1, cam2, d2);
+                                if (p) {
+                                    // Check if all cameras covering this point also see it
+                                    const allCoveringSee = cameras.every(cam => {
+                                        if (isPointInFOV(cam, p)) {
+                                            return doesCamSeePoint(cam, p);
+                                        }
+                                        return true;
+                                    });
+                                    if (allCoveringSee) targets.push(p);
+                                }
                             });
                         });
                     }
@@ -571,8 +651,13 @@
                 mCtx.save();
                 mCtx.translate(cam.x, cam.y);
                 mCtx.rotate(cam.angle * Math.PI / 180);
-                mCtx.fillStyle = cam.color + '15';
+                mCtx.fillStyle = cam.color + (highVisibilityMode ? '66' : '15');
                 mCtx.beginPath(); mCtx.moveTo(0,0); mCtx.arc(0, 0, 150, -camFOVRad/2, camFOVRad/2); mCtx.fill();
+                if (highVisibilityMode) {
+                    mCtx.strokeStyle = cam.color;
+                    mCtx.lineWidth = 1;
+                    mCtx.stroke();
+                }
                 mCtx.fillStyle = cam.color;
                 mCtx.fillRect(-12, -8, 24, 16); mCtx.fillRect(12, -4, 5, 8);
                 if (calibrationMode && calibrationMode.camId === cam.id) {
