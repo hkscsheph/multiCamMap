@@ -229,11 +229,16 @@
         <div class="sidebar-content">
             <div class="config-bar">
                 <h3>Config</h3>
-                <div>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <div style="display: flex; flex-direction: column; gap: 2px;">
+                        <span style="font-size: 8px; color: #888;">PRECISION</span>
+                        <input type="range" min="0.01" max="0.2" step="0.01" value="0.05" style="width: 60px; height: 4px;" 
+                            oninput="triangulationTolerance = parseFloat(this.value)">
+                    </div>
                     <button id="visibilityBtn" title="Toggle High Visibility" style="background: #7f8c8d; padding: 10px 12px; font-size: 11px;">🔆</button>
-                    <button id="copyConfigBtn" style="background: #34495e; padding: 10px 20px; font-size: 11px;">📋</button>
-                    <button id="importBtn" style="background: #e67e22;">📥</button>
-                    <button id="addCamBtn" style="background: #3498db;">➕</button>
+                    <button id="copyConfigBtn" style="background: #34495e; padding: 10px 12px; font-size: 11px;">📋</button>
+                    <button id="importBtn" style="background: #e67e22; padding: 10px 12px; font-size: 11px;">📥</button>
+                    <button id="addCamBtn" style="background: #3498db; padding: 10px 12px; font-size: 11px;">➕</button>
                 </div>
             </div>
 
@@ -249,6 +254,7 @@
         let selectedCam = null;
         let calibrationMode = null; 
         let highVisibilityMode = false;
+        let triangulationTolerance = 0.05;
         
         const mapImg = new Image();
         mapImg.src = 'bigCompRm.webp';
@@ -353,12 +359,20 @@
                     <div style="display:flex; justify-content:space-between; font-size: 10px; color: #888;">
                         <span>FOV</span><span id="fovVal${cam.id}">${cam.fov}°</span>
                     </div>
-                    <input type="range" min="30" max="120" value="${cam.fov}" style="width: 100%; height: 4px;" 
+                    <input id="fovRange${cam.id}" type="range" min="30" max="120" value="${cam.fov}" style="width: 100%; height: 4px;" 
                         oninput="updateCamFOV(${cam.id}, this.value)">
+                </div>
+                <div style="margin: 8px 0;">
+                    <div style="display:flex; justify-content:space-between; font-size: 10px; color: #888;">
+                        <span>ANGLE</span><span id="angleVal${cam.id}">${Math.round(cam.angle)}°</span>
+                    </div>
+                    <input id="angleRange${cam.id}" type="range" min="0" max="360" value="${cam.angle}" style="width: 100%; height: 4px;" 
+                        oninput="updateCamAngle(${cam.id}, this.value)">
                 </div>
                 <div style="display: flex; gap: 5px;">
                     <button onclick="connectSingle(${cam.id})" style="flex: 1; padding: 4px; font-size: 10px; background: #27ae60;">CONNECT</button>
                     <button id="calibBtn${cam.id}" onclick="startCalibration(${cam.id})" style="flex: 1; padding: 4px; font-size: 10px; background: #f39c12;">CALIB</button>
+                    <button onclick="startAutoCalibration(${cam.id})" style="flex: 1; padding: 4px; font-size: 10px; background: #8e44ad;">AUTO</button>
                 </div>
             `;
             camWrapper.appendChild(card);
@@ -438,6 +452,13 @@
             const cam = cameras.find(c => c.id === id);
             cam.fov = parseInt(val);
             document.getElementById(`fovVal${id}`).innerText = val;
+            updateConfigOutput();
+        }
+
+        function updateCamAngle(id, val) {
+            const cam = cameras.find(c => c.id === id);
+            cam.angle = parseInt(val);
+            document.getElementById(`angleVal${id}`).innerText = val + '°';
             updateConfigOutput();
         }
 
@@ -559,7 +580,7 @@
             const angleToPoint = Math.atan2(p.y - cam.y, p.x - cam.x);
             return cam.detections.some(det => {
                 let diff = (det.angle - angleToPoint + Math.PI + 4 * Math.PI) % (2 * Math.PI) - Math.PI;
-                return Math.abs(diff) < 0.05; // Tolerance for ray intersection precision
+                return Math.abs(diff) < triangulationTolerance; 
             });
         }
 
@@ -640,7 +661,16 @@
             targets.forEach((p, idx) => {
                 const isDuplicate = targets.slice(0, idx).some(prev => Math.hypot(p.x - prev.x, p.y - prev.y) < 30);
                 if (!isDuplicate) {
-                    mCtx.font = "24px Arial"; mCtx.textAlign = "center";
+                    if (highVisibilityMode) {
+                        mCtx.fillStyle = "rgba(0,0,0,0.9)";
+                        mCtx.beginPath();
+                        // mCtx.arc(p.x, p.y - 8, 20, 0, Math.PI * 2);
+                        mCtx.fill();
+                        mCtx.font = "36px Arial";
+                    } else {
+                        mCtx.font = "24px Arial";
+                    }
+                    mCtx.textAlign = "center";
                     mCtx.fillText("🐟", p.x, p.y);
                 }
             });
@@ -671,8 +701,14 @@
 
         // Calibration
         function startCalibration(id) {
-            calibrationMode = { camId: id, step: 'video', pixelX: null };
+            calibrationMode = { type: 'single', camId: id, step: 'video', pixelX: null };
             document.getElementById('status').innerText = `🎯 Calibration: Click object in Video ${id}`;
+            document.getElementById(`feedBox${id}`).classList.add('calibrating');
+        }
+
+        function startAutoCalibration(id) {
+            calibrationMode = { type: 'auto', camId: id, step: 'v1', v1: null, m1: null, v2: null, m2: null };
+            document.getElementById('status').innerText = `🎯 Auto-Calib (1/2): Click object 1 in Video ${id}`;
             document.getElementById(`feedBox${id}`).classList.add('calibrating');
         }
 
@@ -683,21 +719,63 @@
         }
 
         function handleFeedClick(id, event) {
-            if (!calibrationMode || calibrationMode.camId !== id || calibrationMode.step !== 'video') return;
-            calibrationMode.pixelX = (event.clientX - event.target.getBoundingClientRect().left) / event.target.clientWidth;
-            calibrationMode.step = 'map';
-            document.getElementById('status').innerText = `🎯 Calibration: Click object's REAL location on Map`;
+            if (!calibrationMode || calibrationMode.camId !== id) return;
+            
+            const pixelX = (event.clientX - event.target.getBoundingClientRect().left) / event.target.clientWidth;
+            
+            if (calibrationMode.type === 'single' && calibrationMode.step === 'video') {
+                calibrationMode.pixelX = pixelX;
+                calibrationMode.step = 'map';
+                document.getElementById('status').innerText = `🎯 Calibration: Click object's REAL location on Map`;
+            } else if (calibrationMode.type === 'auto') {
+                if (calibrationMode.step === 'v1') {
+                    calibrationMode.v1 = pixelX;
+                    calibrationMode.step = 'm1';
+                    document.getElementById('status').innerText = `🎯 Auto-Calib (1/2): Click object 1 on Map`;
+                } else if (calibrationMode.step === 'v2') {
+                    calibrationMode.v2 = pixelX;
+                    calibrationMode.step = 'm2';
+                    document.getElementById('status').innerText = `🎯 Auto-Calib (2/2): Click object 2 on Map`;
+                }
+            }
         }
 
         const getMouse = (e) => ({ x: e.clientX, y: e.clientY });
 
+        function syncCamUI(cam) {
+            const fovVal = document.getElementById(`fovVal${cam.id}`);
+            const fovRange = document.getElementById(`fovRange${cam.id}`);
+            const angleVal = document.getElementById(`angleVal${cam.id}`);
+            const angleRange = document.getElementById(`angleRange${cam.id}`);
+            
+            if (fovVal) fovVal.innerText = `${Math.round(cam.fov)}°`;
+            if (fovRange) fovRange.value = cam.fov;
+            if (angleVal) angleVal.innerText = `${Math.round(cam.angle)}°`;
+            if (angleRange) angleRange.value = cam.angle;
+        }
+
         mCanvas.onmousedown = (e) => {
             const p = getMouse(e);
-            if (calibrationMode && calibrationMode.step === 'map') {
+            
+            if (calibrationMode && (calibrationMode.step === 'map' || calibrationMode.step === 'm1' || calibrationMode.step === 'm2')) {
                 const cam = cameras.find(c => c.id === calibrationMode.camId);
-                const camFOVRad = (cam.fov || 60) * Math.PI / 180;
-                cam.angle = (Math.atan2(p.y - cam.y, p.x - cam.x) - (calibrationMode.pixelX - 0.5) * camFOVRad) * 180 / Math.PI;
-                stopCalibration(cam.id);
+                
+                if (calibrationMode.step === 'map') {
+                    const camFOVRad = (cam.fov || 60) * Math.PI / 180;
+                    cam.angle = (Math.atan2(p.y - cam.y, p.x - cam.x) - (calibrationMode.pixelX - 0.5) * camFOVRad) * 180 / Math.PI;
+                    cam.angle = (cam.angle + 360) % 360;
+                    stopCalibration(cam.id);
+                    syncCamUI(cam);
+                } else if (calibrationMode.step === 'm1') {
+                    calibrationMode.m1 = p;
+                    calibrationMode.step = 'v2';
+                    document.getElementById('status').innerText = `🎯 Auto-Calib (2/2): Click object 2 in Video ${cam.id}`;
+                } else if (calibrationMode.step === 'm2') {
+                    calibrationMode.m2 = p;
+                    solveAutoCalibration(cam, calibrationMode);
+                    stopCalibration(cam.id);
+                    syncCamUI(cam);
+                }
                 updateConfigOutput();
                 return;
             }
@@ -706,6 +784,32 @@
             });
             if (selectedCam) isDragging = true;
         };
+
+        function solveAutoCalibration(cam, data) {
+            const theta1 = Math.atan2(data.m1.y - cam.y, data.m1.x - cam.x);
+            const theta2 = Math.atan2(data.m2.y - cam.y, data.m2.x - cam.x);
+            
+            let dTheta = theta2 - theta1;
+            while (dTheta > Math.PI) dTheta -= 2 * Math.PI;
+            while (dTheta < -Math.PI) dTheta += 2 * Math.PI;
+            
+            const dV = data.v2 - data.v1;
+            
+            if (Math.abs(dV) < 0.01) return alert("Objects too close in video");
+            
+            const fovRad = dTheta / dV;
+            const fovDeg = Math.abs(fovRad * 180 / Math.PI);
+            
+            if (fovDeg < 10 || fovDeg > 180) {
+                alert(`Warning: Calculated FOV (${Math.round(fovDeg)}°) is unusual. Check your points.`);
+            }
+            
+            cam.fov = Math.max(10, Math.min(180, fovDeg));
+            cam.angle = (theta1 - (data.v1 - 0.5) * (cam.fov * Math.PI / 180)) * 180 / Math.PI;
+            
+            // Normalize angle
+            cam.angle = (cam.angle + 360) % 360;
+        }
 
         mCanvas.onmousemove = (e) => {
             if (isDragging && selectedCam) {
