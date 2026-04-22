@@ -346,10 +346,11 @@
                     style="width: 100%; padding: 5px; background: #000; color: #00ff41; border: 1px solid #444; font-size: 11px;">
                     <option value="webcam" ${cam.sourceType === 'webcam' ? 'selected' : ''}>Webcam</option>
                     <option value="mjpeg" ${cam.sourceType === 'mjpeg' ? 'selected' : ''}>IP Camera (MJPEG)</option>
+                    <option value="rtsp" ${cam.sourceType === 'rtsp' ? 'selected' : ''}>IP Camera (RTSP)</option>
                     <option value="screenshare" ${cam.sourceType === 'screenshare' ? 'selected' : ''}>Screen</option>
                 </select>
                 <input id="urlInput${cam.id}" type="text" placeholder="URL" value="${cam.streamUrl || ''}"
-                    style="display: ${cam.sourceType === 'mjpeg' ? 'block' : 'none'}; width: 100%; padding: 5px; margin-top: 5px; background: #000; color: #00ff41; border: 1px solid #444; font-size: 11px;"
+                    style="display: ${['mjpeg', 'rtsp'].includes(cam.sourceType) ? 'block' : 'none'}; width: 100%; padding: 5px; margin-top: 5px; background: #000; color: #00ff41; border: 1px solid #444; font-size: 11px;"
                     onchange="updateCamUrl(${cam.id}, this.value)" />
                 <select id="deviceSelector${cam.id}" 
                     style="display: ${cam.sourceType === 'webcam' ? 'block' : 'none'}; width: 100%; padding: 5px; margin-top: 5px; background: #000; color: #00ff41; border: 1px solid #444; font-size: 11px;"
@@ -408,7 +409,7 @@
             const cam = cameras.find(c => c.id === id);
             const sourceType = document.getElementById(`sourceType${id}`).value;
             cam.sourceType = sourceType;
-            document.getElementById(`urlInput${id}`).style.display = sourceType === 'mjpeg' ? 'block' : 'none';
+            document.getElementById(`urlInput${id}`).style.display = ['mjpeg', 'rtsp'].includes(sourceType) ? 'block' : 'none';
             
             const deviceSelector = document.getElementById(`deviceSelector${id}`);
             if (deviceSelector) {
@@ -475,9 +476,18 @@
             const videoBox = document.getElementById(`feedBox${id}`);
 
             try {
-                if (cam.sourceType === 'mjpeg') {
+                if (cam.sourceType === 'mjpeg' || cam.sourceType === 'rtsp') {
                     if (!cam.streamUrl) return alert("Enter URL");
-                    imgElement.src = cam.streamUrl;
+                    
+                    // For RTSP, we assume a local proxy will handle it and return MJPEG
+                    // or the user provides a URL that is already a proxy.
+                    // If the URL starts with rtsp://, we try to use our local proxy.
+                    if (cam.sourceType === 'rtsp' && cam.streamUrl.startsWith('rtsp://')) {
+                        imgElement.src = `http://localhost:3000/rtsp-proxy?url=${encodeURIComponent(cam.streamUrl)}`;
+                    } else {
+                        imgElement.src = cam.streamUrl;
+                    }
+                    
                     imgElement.style.display = 'block';
                     videoBox.classList.add('active');
                     processCamera(imgElement, canvas, cam);
@@ -631,32 +641,74 @@
                 });
             });
 
-            // Triangulation
-            const targets = [];
-            const activeCams = cameras.filter(c => c.detections.length > 0);
+            // Triangulation (Optimized: Competitive Greedy Matching)
+            const candidates = [];
+            const activeCams = cameras.filter(c => c.detections.length > 0 && c.active);
+            
             if (activeCams.length >= 2) {
                 for (let i = 0; i < activeCams.length; i++) {
                     for (let j = i + 1; j < activeCams.length; j++) {
                         const cam1 = activeCams[i];
                         const cam2 = activeCams[j];
-                        cam1.detections.forEach(d1 => {
-                            cam2.detections.forEach(d2 => {
+                        
+                        cam1.detections.forEach((d1, d1Idx) => {
+                            cam2.detections.forEach((d2, d2Idx) => {
                                 const p = getIntersection(cam1, d1, cam2, d2);
                                 if (p) {
-                                    // Check if all cameras covering this point also see it
-                                    const allCoveringSee = cameras.every(cam => {
+                                    // 1. Check if all cameras covering this point also see it
+                                    const seeingCams = [];
+                                    let allCoveringSee = true;
+                                    
+                                    cameras.forEach(cam => {
                                         if (isPointInFOV(cam, p)) {
-                                            return doesCamSeePoint(cam, p);
+                                            const angleToPoint = Math.atan2(p.y - cam.y, p.x - cam.x);
+                                            const matchingDetIdx = cam.detections.findIndex(det => {
+                                                let diff = (det.angle - angleToPoint + Math.PI + 4 * Math.PI) % (2 * Math.PI) - Math.PI;
+                                                return Math.abs(diff) < triangulationTolerance;
+                                            });
+                                            
+                                            if (matchingDetIdx !== -1) {
+                                                seeingCams.push({ camId: cam.id, detIdx: matchingDetIdx });
+                                            } else {
+                                                allCoveringSee = false;
+                                            }
                                         }
-                                        return true;
                                     });
-                                    if (allCoveringSee) targets.push(p);
+
+                                    if (allCoveringSee && seeingCams.length >= 2) {
+                                        candidates.push({
+                                            pos: p,
+                                            score: seeingCams.length,
+                                            contributingRays: seeingCams
+                                        });
+                                    }
                                 }
                             });
                         });
                     }
                 }
             }
+
+            // Greedy selection: highest score first, consume rays
+            const targets = [];
+            const consumedRays = new Set(); // Format: "camId-detIdx"
+
+            candidates.sort((a, b) => b.score - a.score);
+
+            candidates.forEach(cand => {
+                // Check if any contributing ray is already used
+                const isAvailable = cand.contributingRays.every(ray => 
+                    !consumedRays.has(`${ray.camId}-${ray.detIdx}`)
+                );
+
+                if (isAvailable) {
+                    targets.push(cand.pos);
+                    // Consume all rays that can see this point
+                    cand.contributingRays.forEach(ray => {
+                        consumedRays.add(`${ray.camId}-${ray.detIdx}`);
+                    });
+                }
+            });
 
             targets.forEach((p, idx) => {
                 const isDuplicate = targets.slice(0, idx).some(prev => Math.hypot(p.x - prev.x, p.y - prev.y) < 30);

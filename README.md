@@ -13,6 +13,7 @@
 - **動態新增攝影機**：支援「逐一新增」攝影機，點擊「+ ADD CAMERA」即可動態擴展系統規模，不受預設數量限制。
 - **多來源支援**：
   - **MJPEG IP 攝影機**：支援透過 HTTP URL 接入標準 MJPEG 串流。
+  - **RTSP IP 攝影機**：支援透過 `rtsp://` 協議接入攝影機，系統會透過後端 Proxy 自動轉換為瀏覽器可讀取的格式（需安裝 `ffmpeg`）。
   - **Webcam**：支援裝置內建或外接的 Web 攝影機。
   - **螢幕共享 (Screen Share)**：支援將瀏覽器視窗或整個螢幕作為輸入來源。
 - **互動式校準模式 (Calibration Mode)**：
@@ -26,24 +27,31 @@
 - **前端**：HTML5, CSS3, JavaScript (ES6+)
 - **AI 框架**：TensorFlow.js (@tensorflow/tfjs)
 - **模型**：COCO-SSD (@tensorflow-models/coco-ssd)
+- **後端 Proxy**：Node.js, Express, fluent-ffmpeg (用於 RTSP 轉碼)
 - **開發工具**：servor (輕量級開發伺服器)
 
 ## 快速開始
 
-1. **安裝依賴**：
+1. **安裝依賴** (系統需預先安裝 `ffmpeg`)：
    ```bash
    npm install
    ```
 
-2. **啟動開發伺服器**：
+2. **啟動後端 Proxy** (若需使用 RTSP)：
+   ```bash
+   node proxy.js
+   ```
+
+3. **啟動開發伺服器**：
    ```bash
    npm start
    ```
 
-3. **操作說明**：
+4. **操作說明**：
    - 在頁面頂端的「Camera Source Configuration」面板配置各攝影機來源。
    - 若選擇 **MJPEG**，請輸入完整的串流網址（如：`http://192.168.1.100:8080/stream`）。
-   - 點擊「CONNECT CAMERAS」或切換來源類型以啟動連接。
+   - 若選擇 **RTSP**，請輸入 `rtsp://` 開頭的網址。
+   - 點擊「CONNECT」按鈕以啟動連接。
    - 在左側地圖中，拖曳攝影機圓點調整位置，在周圍拖曳滑鼠調整拍攝角度。
    - 當系統同時偵測到目標，地圖上將會出現 🐟 標記。
 
