@@ -75,7 +75,7 @@ app.get('/rtsp-proxy', (req, res) => {
         .outputOptions([
             '-f mpjpeg',
             '-q:v 3',
-            '-boundary_marker ffmpeg'
+            '-boundary ffmpeg'
         ])
         .on('start', (commandLine) => {
             console.log('Spawned Ffmpeg with command: ' + commandLine);
