@@ -4,9 +4,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Sensor Fusion: YOLOv8 Triangulation</title>
+    <title>AI Sensor Fusion: MJPEG IP Cameras</title>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
-    <!-- Removed COCO-SSD, we will use custom YOLOv8 logic -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
+    <!-- YOLOv8 logic will be handled via graph model loading -->
     <style>
         body {
             font-family: 'Segoe UI', sans-serif;
@@ -115,6 +116,7 @@
             position: absolute;
             top: 0;
             left: 0;
+            object-fit: contain;
         }
 
         img.stream-source {
@@ -227,18 +229,30 @@
         <button id="toggleBtn" class="toggle-handle">▶</button>
         
         <div class="sidebar-content">
-            <div class="config-bar">
-                <h3>Config</h3>
-                <div style="display: flex; align-items: center; gap: 10px;">
-                    <div style="display: flex; flex-direction: column; gap: 2px;">
+            <div class="config-bar" style="flex-direction: column; align-items: stretch; gap: 10px;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <h3>Config</h3>
+                    <div style="display: flex; align-items: center; gap: 5px;">
+                        <button id="visibilityBtn" title="Toggle High Visibility" style="background: #7f8c8d; padding: 6px 10px; font-size: 11px;">🔆</button>
+                        <button id="copyConfigBtn" style="background: #34495e; padding: 6px 10px; font-size: 11px;">📋</button>
+                        <button id="importBtn" style="background: #e67e22; padding: 6px 10px; font-size: 11px;">📥</button>
+                        <button id="addCamBtn" style="background: #3498db; padding: 6px 10px; font-size: 11px;">➕</button>
+                    </div>
+                </div>
+                
+                <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 5px; border-top: 1px solid #333;">
+                    <div style="display: flex; flex-direction: column; gap: 2px; flex: 1;">
+                        <span style="font-size: 8px; color: #888;">AI ENGINE</span>
+                        <select id="aiEngine" style="background: #000; color: #00ff41; border: 1px solid #444; font-size: 9px; padding: 2px; width: 95%;" onchange="switchAIEngine(this.value)">
+                            <option value="cocossd">COCO-SSD</option>
+                            <option value="yolov8">YOLOv8 Nano</option>
+                        </select>
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 2px; flex: 1;">
                         <span style="font-size: 8px; color: #888;">PRECISION</span>
-                        <input type="range" min="0.01" max="0.2" step="0.01" value="0.05" style="width: 60px; height: 4px;" 
+                        <input type="range" min="0.01" max="0.2" step="0.01" value="0.05" style="width: 95%; height: 4px;" 
                             oninput="triangulationTolerance = parseFloat(this.value)">
                     </div>
-                    <button id="visibilityBtn" title="Toggle High Visibility" style="background: #7f8c8d; padding: 10px 12px; font-size: 11px;">🔆</button>
-                    <button id="copyConfigBtn" style="background: #34495e; padding: 10px 12px; font-size: 11px;">📋</button>
-                    <button id="importBtn" style="background: #e67e22; padding: 10px 12px; font-size: 11px;">📥</button>
-                    <button id="addCamBtn" style="background: #3498db; padding: 10px 12px; font-size: 11px;">➕</button>
                 </div>
             </div>
 
@@ -294,82 +308,81 @@
         window.onresize = resizeMap;
         resizeMap();
 
-        // 1. Setup AI (YOLOv8 Nano)
-        const YOLO_MODEL_URL = 'https://cdn.jsdelivr.net/gh/Hyuto/yolov8-tfjs@master/public/yolov8n_web_model/model.json'; 
+        // 1. Setup AI
+        let currentEngine = 'cocossd';
+        let cocoModel;
+        let yoloModel;
+        const YOLO_URL = 'https://cdn.jsdelivr.net/gh/Hyuto/yolov8-tfjs@master/public/yolov8n_web_model/model.json';
         
-        async function loadModel() {
+        async function initAI() {
             try {
-                model = await tf.loadGraphModel(YOLO_MODEL_URL);
-                document.getElementById('status').innerText = "✅ YOLOv8 Core Ready.";
+                cocoModel = await cocoSsd.load();
+                model = cocoModel;
+                document.getElementById('status').innerText = "✅ COCO-SSD Ready.";
             } catch (err) {
-                document.getElementById('status').innerText = "❌ YOLO Load Error: " + err.message;
-                console.error(err);
+                document.getElementById('status').innerText = "❌ AI Load Error.";
             }
         }
-        loadModel();
+        initAI();
 
-        let isProcessing = {};
-
-        async function detectYOLO(inputElement, id) {
-            if (!model || isProcessing[id]) return null;
-            isProcessing[id] = true;
-
-            const [width, height] = [inputElement.naturalWidth || inputElement.videoWidth, inputElement.naturalHeight || inputElement.videoHeight];
-            if (!width || !height) {
-                isProcessing[id] = false;
-                return [];
+        async function switchAIEngine(engine) {
+            document.getElementById('status').innerText = `📡 Switching to ${engine.toUpperCase()}...`;
+            
+            if (engine === 'yolov8') {
+                if (!yoloModel) {
+                    try {
+                        yoloModel = await tf.loadGraphModel(YOLO_URL);
+                    } catch (err) {
+                        document.getElementById('status').innerText = "❌ YOLOv8 Load Error.";
+                        return;
+                    }
+                }
+                model = yoloModel;
+            } else {
+                model = cocoModel;
             }
+            
+            currentEngine = engine; // Update state ONLY after model is ready
+            document.getElementById('status').innerText = `✅ ${engine.toUpperCase()} Active.`;
+        }
 
-            try {
-                const result = await tf.tidy(() => {
+        async function detectPeople(inputElement) {
+            if (!model) return [];
+
+            if (currentEngine === 'cocossd') {
+                if (typeof model.detect !== 'function') return []; // Safety check
+                const tensor = tf.browser.fromPixels(inputElement);
+                const predictions = await model.detect(tensor);
+                tensor.dispose();
+                return predictions.filter(p => p.class === 'person');
+            } else {
+                if (typeof model.predict !== 'function') return []; // Safety check
+                const [width, height] = [inputElement.naturalWidth || inputElement.videoWidth, inputElement.naturalHeight || inputElement.videoHeight];
+                if (!width || !height) return [];
+
+                return tf.tidy(() => {
                     const img = tf.browser.fromPixels(inputElement);
                     const resized = tf.image.resizeBilinear(img, [640, 640]);
                     const normalized = resized.div(255.0).expandDims(0);
-                    
                     const output = model.predict(normalized);
                     const raw = output.squeeze([0]);
                     const transposed = raw.transpose();
-                    
                     const boxes = transposed.slice([0, 0], [-1, 4]);
                     const scores = transposed.slice([0, 4], [-1, 80]);
-                    
                     const personScores = scores.slice([0, 0], [-1, 1]).squeeze();
-                    
-                    const filteredIndices = tf.image.nonMaxSuppression(
-                        boxes, 
-                        personScores, 
-                        5,     // max output size
-                        0.45,  // iou threshold
-                        0.3    // lowered score threshold for testing
-                    ).arraySync();
-
-                    if (filteredIndices.length > 0) {
-                        console.log(`Cam ${id} detected ${filteredIndices.length} people`);
-                    }
-
+                    const filteredIndices = tf.image.nonMaxSuppression(boxes, personScores, 10, 0.45, 0.4).arraySync();
                     const boxArr = boxes.arraySync();
                     const scoreArr = personScores.arraySync();
 
                     return filteredIndices.map(idx => {
                         const [cx, cy, w, h] = boxArr[idx];
                         return {
-                            bbox: [
-                                (cx - w / 2) * (width / 640), 
-                                (cy - h / 2) * (height / 640),
-                                w * (width / 640),
-                                h * (height / 640)
-                            ],
+                            bbox: [(cx - w / 2) * (width / 640), (cy - h / 2) * (height / 640), w * (width / 640), h * (height / 640)],
                             score: scoreArr[idx],
                             class: 'person'
                         };
                     });
                 });
-                isProcessing[id] = false;
-                return result;
-            } catch (err) {
-                console.error("Inference error:", err);
-                isProcessing[id] = false;
-                return [];
             }
         }
 
@@ -378,10 +391,8 @@
                 requestAnimationFrame(() => processCamera(imgElement, canvas, camObj));
                 return;
             }
-            const predictions = await detectYOLO(imgElement, camObj.id);
-            if (predictions) {
-                handlePredictions(predictions, canvas, imgElement.naturalWidth, imgElement.naturalHeight, camObj);
-            }
+            const predictions = await detectPeople(imgElement);
+            handlePredictions(predictions, canvas, imgElement.naturalWidth, imgElement.naturalHeight, camObj);
             requestAnimationFrame(() => processCamera(imgElement, canvas, camObj));
         }
 
@@ -390,10 +401,8 @@
                 requestAnimationFrame(() => processWebcamCamera(videoElement, canvas, camObj));
                 return;
             }
-            const predictions = await detectYOLO(videoElement, camObj.id);
-            if (predictions) {
-                handlePredictions(predictions, canvas, videoElement.videoWidth, videoElement.videoHeight, camObj);
-            }
+            const predictions = await detectPeople(videoElement);
+            handlePredictions(predictions, canvas, videoElement.videoWidth, videoElement.videoHeight, camObj);
             requestAnimationFrame(() => processWebcamCamera(videoElement, canvas, camObj));
         }
 
@@ -635,32 +644,56 @@
         }
 
         function handlePredictions(predictions, canvas, width, height, camObj) {
-            // Match internal resolution to natural source resolution
-            if (canvas.width !== width || canvas.height !== height) {
-                canvas.width = width;
-                canvas.height = height;
-            }
-            
-            const ctx = canvas.getContext('2d');
-            ctx.clearRect(0, 0, width, height);
-
             const container = canvas.parentElement;
             const cw = container.clientWidth;
-            
-            // Calculate a visible line width based on the scale difference
-            // (e.g., if image is 1920 but displayed at 350, we need a thicker line in pixel-space)
-            const displayScale = width / cw;
-            ctx.lineWidth = 3 * displayScale;
+            const ch = container.clientHeight;
 
+            // 1. Match internal resolution to displayed CSS pixels
+            if (canvas.width !== cw || canvas.height !== ch) {
+                canvas.width = cw;
+                canvas.height = ch;
+            }
+            
+            // 2. Ensure canvas covers the container
+            canvas.style.width = '100%';
+            canvas.style.height = '100%';
+            canvas.style.top = '0';
+            canvas.style.left = '0';
+
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, cw, ch);
+
+            // 3. Calculate 'contain' mapping scale and offsets
+            const containerRatio = cw / ch;
+            const contentRatio = width / height;
+            let scale, offsetX, offsetY;
+
+            if (contentRatio > containerRatio) {
+                scale = cw / width;
+                offsetX = 0;
+                offsetY = (ch - height * scale) / 2;
+            } else {
+                scale = ch / height;
+                offsetY = 0;
+                offsetX = (cw - width * scale) / 2;
+            }
+
+            ctx.lineWidth = 2;
             const camFOVRad = (camObj.fov || 60) * Math.PI / 180;
             camObj.detections = [];
 
             predictions.forEach(p => {
                 if (p.class === 'person' && p.score > 0.5) {
                     const [x, y, w, h] = p.bbox;
-                    
                     ctx.strokeStyle = camObj.color;
-                    ctx.strokeRect(x, y, w, h);
+                    
+                    // 4. Map natural AI coordinates to display pixels
+                    ctx.strokeRect(
+                        offsetX + x * scale,
+                        offsetY + y * scale,
+                        w * scale,
+                        h * scale
+                    );
 
                     const personCenterX = x + w / 2;
                     const offsetAngle = (personCenterX / width - 0.5) * camFOVRad;
