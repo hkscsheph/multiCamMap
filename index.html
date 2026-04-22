@@ -4,9 +4,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Sensor Fusion: MJPEG IP Cameras</title>
+    <title>AI Sensor Fusion: YOLOv8 Triangulation</title>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
+    <!-- Removed COCO-SSD, we will use custom YOLOv8 logic -->
     <style>
         body {
             font-family: 'Segoe UI', sans-serif;
@@ -294,11 +294,108 @@
         window.onresize = resizeMap;
         resizeMap();
 
-        // 1. Setup AI
-        cocoSsd.load().then(lModel => {
-            model = lModel;
-            document.getElementById('status').innerText = "✅ AI Core Ready.";
-        });
+        // 1. Setup AI (YOLOv8 Nano)
+        const YOLO_MODEL_URL = 'https://cdn.jsdelivr.net/gh/Hyuto/yolov8-tfjs@master/public/yolov8n_web_model/model.json'; 
+        
+        async function loadModel() {
+            try {
+                model = await tf.loadGraphModel(YOLO_MODEL_URL);
+                document.getElementById('status').innerText = "✅ YOLOv8 Core Ready.";
+            } catch (err) {
+                document.getElementById('status').innerText = "❌ YOLO Load Error: " + err.message;
+                console.error(err);
+            }
+        }
+        loadModel();
+
+        let isProcessing = {};
+
+        async function detectYOLO(inputElement, id) {
+            if (!model || isProcessing[id]) return null;
+            isProcessing[id] = true;
+
+            const [width, height] = [inputElement.naturalWidth || inputElement.videoWidth, inputElement.naturalHeight || inputElement.videoHeight];
+            if (!width || !height) {
+                isProcessing[id] = false;
+                return [];
+            }
+
+            try {
+                const result = await tf.tidy(() => {
+                    const img = tf.browser.fromPixels(inputElement);
+                    const resized = tf.image.resizeBilinear(img, [640, 640]);
+                    const normalized = resized.div(255.0).expandDims(0);
+                    
+                    const output = model.predict(normalized);
+                    const raw = output.squeeze([0]);
+                    const transposed = raw.transpose();
+                    
+                    const boxes = transposed.slice([0, 0], [-1, 4]);
+                    const scores = transposed.slice([0, 4], [-1, 80]);
+                    
+                    const personScores = scores.slice([0, 0], [-1, 1]).squeeze();
+                    
+                    const filteredIndices = tf.image.nonMaxSuppression(
+                        boxes, 
+                        personScores, 
+                        5,     // max output size
+                        0.45,  // iou threshold
+                        0.3    // lowered score threshold for testing
+                    ).arraySync();
+
+                    if (filteredIndices.length > 0) {
+                        console.log(`Cam ${id} detected ${filteredIndices.length} people`);
+                    }
+
+                    const boxArr = boxes.arraySync();
+                    const scoreArr = personScores.arraySync();
+
+                    return filteredIndices.map(idx => {
+                        const [cx, cy, w, h] = boxArr[idx];
+                        return {
+                            bbox: [
+                                (cx - w / 2) * (width / 640), 
+                                (cy - h / 2) * (height / 640),
+                                w * (width / 640),
+                                h * (height / 640)
+                            ],
+                            score: scoreArr[idx],
+                            class: 'person'
+                        };
+                    });
+                });
+                isProcessing[id] = false;
+                return result;
+            } catch (err) {
+                console.error("Inference error:", err);
+                isProcessing[id] = false;
+                return [];
+            }
+        }
+
+        async function processCamera(imgElement, canvas, camObj) {
+            if (!imgElement.complete || imgElement.naturalWidth === 0 || !camObj.active) {
+                requestAnimationFrame(() => processCamera(imgElement, canvas, camObj));
+                return;
+            }
+            const predictions = await detectYOLO(imgElement, camObj.id);
+            if (predictions) {
+                handlePredictions(predictions, canvas, imgElement.naturalWidth, imgElement.naturalHeight, camObj);
+            }
+            requestAnimationFrame(() => processCamera(imgElement, canvas, camObj));
+        }
+
+        async function processWebcamCamera(videoElement, canvas, camObj) {
+            if (videoElement.readyState !== videoElement.HAVE_ENOUGH_DATA || !camObj.active) {
+                requestAnimationFrame(() => processWebcamCamera(videoElement, canvas, camObj));
+                return;
+            }
+            const predictions = await detectYOLO(videoElement, camObj.id);
+            if (predictions) {
+                handlePredictions(predictions, canvas, videoElement.videoWidth, videoElement.videoHeight, camObj);
+            }
+            requestAnimationFrame(() => processWebcamCamera(videoElement, canvas, camObj));
+        }
 
         function addCamera() {
             const id = cameras.length > 0 ? Math.max(...cameras.map(c => c.id)) + 1 : 1;
@@ -537,58 +634,24 @@
             }
         }
 
-        async function processCamera(imgElement, canvas, camObj) {
-            if (!imgElement.complete || imgElement.naturalWidth === 0) {
-                requestAnimationFrame(() => processCamera(imgElement, canvas, camObj));
-                return;
-            }
-            const predictions = await model.detect(imgElement);
-            handlePredictions(predictions, canvas, imgElement.naturalWidth, imgElement.naturalHeight, camObj);
-            requestAnimationFrame(() => processCamera(imgElement, canvas, camObj));
-        }
-
-        async function processWebcamCamera(videoElement, canvas, camObj) {
-            if (videoElement.readyState !== videoElement.HAVE_ENOUGH_DATA) {
-                requestAnimationFrame(() => processWebcamCamera(videoElement, canvas, camObj));
-                return;
-            }
-            const predictions = await model.detect(videoElement);
-            handlePredictions(predictions, canvas, videoElement.videoWidth, videoElement.videoHeight, camObj);
-            requestAnimationFrame(() => processWebcamCamera(videoElement, canvas, camObj));
-        }
-
         function handlePredictions(predictions, canvas, width, height, camObj) {
-            const container = canvas.parentElement;
-            const cw = container.clientWidth;
-            const ch = container.clientHeight;
-            
-            // Set internal resolution to match displayed size for sharp, consistent lines
-            if (canvas.width !== cw || canvas.height !== ch) {
-                canvas.width = cw;
-                canvas.height = ch;
+            // Match internal resolution to natural source resolution
+            if (canvas.width !== width || canvas.height !== height) {
+                canvas.width = width;
+                canvas.height = height;
             }
             
             const ctx = canvas.getContext('2d');
-            ctx.clearRect(0, 0, cw, ch);
+            ctx.clearRect(0, 0, width, height);
 
-            // Calculate the 'object-fit: contain' area
-            const containerRatio = cw / ch;
-            const contentRatio = width / height;
+            const container = canvas.parentElement;
+            const cw = container.clientWidth;
+            
+            // Calculate a visible line width based on the scale difference
+            // (e.g., if image is 1920 but displayed at 350, we need a thicker line in pixel-space)
+            const displayScale = width / cw;
+            ctx.lineWidth = 3 * displayScale;
 
-            let displayWidth, displayHeight, offsetX, offsetY;
-            if (contentRatio > containerRatio) {
-                displayWidth = cw;
-                displayHeight = cw / contentRatio;
-                offsetX = 0;
-                offsetY = (ch - displayHeight) / 2;
-            } else {
-                displayHeight = ch;
-                displayWidth = ch * contentRatio;
-                offsetY = 0;
-                offsetX = (cw - displayWidth) / 2;
-            }
-
-            const scale = displayWidth / width;
             const camFOVRad = (camObj.fov || 60) * Math.PI / 180;
             camObj.detections = [];
 
@@ -596,15 +659,8 @@
                 if (p.class === 'person' && p.score > 0.5) {
                     const [x, y, w, h] = p.bbox;
                     
-                    // Draw bounding box aligned with the displayed image
                     ctx.strokeStyle = camObj.color;
-                    ctx.lineWidth = 3;
-                    ctx.strokeRect(
-                        offsetX + x * scale,
-                        offsetY + y * scale,
-                        w * scale,
-                        h * scale
-                    );
+                    ctx.strokeRect(x, y, w, h);
 
                     const personCenterX = x + w / 2;
                     const offsetAngle = (personCenterX / width - 0.5) * camFOVRad;
