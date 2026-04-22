@@ -558,19 +558,53 @@
         }
 
         function handlePredictions(predictions, canvas, width, height, camObj) {
-            if (canvas.width !== width) { canvas.width = width; canvas.height = height; }
+            const container = canvas.parentElement;
+            const cw = container.clientWidth;
+            const ch = container.clientHeight;
+            
+            // Set internal resolution to match displayed size for sharp, consistent lines
+            if (canvas.width !== cw || canvas.height !== ch) {
+                canvas.width = cw;
+                canvas.height = ch;
+            }
+            
             const ctx = canvas.getContext('2d');
-            ctx.clearRect(0, 0, width, height);
+            ctx.clearRect(0, 0, cw, ch);
 
+            // Calculate the 'object-fit: contain' area
+            const containerRatio = cw / ch;
+            const contentRatio = width / height;
+
+            let displayWidth, displayHeight, offsetX, offsetY;
+            if (contentRatio > containerRatio) {
+                displayWidth = cw;
+                displayHeight = cw / contentRatio;
+                offsetX = 0;
+                offsetY = (ch - displayHeight) / 2;
+            } else {
+                displayHeight = ch;
+                displayWidth = ch * contentRatio;
+                offsetY = 0;
+                offsetX = (cw - displayWidth) / 2;
+            }
+
+            const scale = displayWidth / width;
             const camFOVRad = (camObj.fov || 60) * Math.PI / 180;
             camObj.detections = [];
 
             predictions.forEach(p => {
                 if (p.class === 'person' && p.score > 0.5) {
                     const [x, y, w, h] = p.bbox;
+                    
+                    // Draw bounding box aligned with the displayed image
                     ctx.strokeStyle = camObj.color;
                     ctx.lineWidth = 3;
-                    ctx.strokeRect(x, y, w, h);
+                    ctx.strokeRect(
+                        offsetX + x * scale,
+                        offsetY + y * scale,
+                        w * scale,
+                        h * scale
+                    );
 
                     const personCenterX = x + w / 2;
                     const offsetAngle = (personCenterX / width - 0.5) * camFOVRad;
