@@ -253,6 +253,11 @@
                         <input type="range" min="0.01" max="0.2" step="0.01" value="0.05" style="width: 95%; height: 4px;" 
                             oninput="triangulationTolerance = parseFloat(this.value)">
                     </div>
+                    <div style="display: flex; flex-direction: column; gap: 2px; flex: 1;">
+                        <span style="font-size: 8px; color: #888;">THRESHOLD</span>
+                        <input type="range" min="0.1" max="0.9" step="0.05" value="0.5" style="width: 95%; height: 4px;" 
+                            oninput="detectionThreshold = parseFloat(this.value)">
+                    </div>
                 </div>
             </div>
 
@@ -269,6 +274,7 @@
         let calibrationMode = null; 
         let highVisibilityMode = false;
         let triangulationTolerance = 0.05;
+        let detectionThreshold = 0.5;
         
         const mapImg = new Image();
         mapImg.src = 'bigCompRm.webp';
@@ -354,7 +360,7 @@
                 const tensor = tf.browser.fromPixels(inputElement);
                 const predictions = await model.detect(tensor);
                 tensor.dispose();
-                return predictions.filter(p => p.class === 'person');
+                return predictions.filter(p => p.class === 'person' && p.score > detectionThreshold);
             } else {
                 if (typeof model.predict !== 'function') return []; // Safety check
                 const [width, height] = [inputElement.naturalWidth || inputElement.videoWidth, inputElement.naturalHeight || inputElement.videoHeight];
@@ -370,7 +376,7 @@
                     const boxes = transposed.slice([0, 0], [-1, 4]);
                     const scores = transposed.slice([0, 4], [-1, 80]);
                     const personScores = scores.slice([0, 0], [-1, 1]).squeeze();
-                    const filteredIndices = tf.image.nonMaxSuppression(boxes, personScores, 10, 0.45, 0.4).arraySync();
+                    const filteredIndices = tf.image.nonMaxSuppression(boxes, personScores, 10, 0.45, detectionThreshold).arraySync();
                     const boxArr = boxes.arraySync();
                     const scoreArr = personScores.arraySync();
 
@@ -684,10 +690,11 @@
 
             // Some environments/versions of COCO-SSD return coordinates that appear halved.
             // We apply a multiplier to correct this as requested.
-            const mult = (currentEngine === 'cocossd') ? 2 : 1;
+            // Multiplier is disabled for webcams as requested.
+            const mult = (currentEngine === 'cocossd' && camObj.sourceType !== 'webcam') ? 2 : 1;
 
             predictions.forEach(p => {
-                if (p.class === 'person' && p.score > 0.5) {
+                if (p.class === 'person' && p.score > detectionThreshold) {
                     const [x, y, w, h] = p.bbox;
                     ctx.strokeStyle = camObj.color;
                     
