@@ -246,6 +246,7 @@
                         <select id="aiEngine" style="background: #000; color: #00ff41; border: 1px solid #444; font-size: 9px; padding: 2px; width: 95%;" onchange="switchAIEngine(this.value)">
                             <option value="cocossd">COCO-SSD</option>
                             <option value="yolov8">YOLOv8 Nano</option>
+                            <option value="python">Python (Remote)</option>
                         </select>
                     </div>
                     <div style="display: flex; flex-direction: column; gap: 2px; flex: 1;">
@@ -352,7 +353,29 @@
             document.getElementById('status').innerText = `✅ ${engine.toUpperCase()} Active.`;
         }
 
-        async function detectPeople(inputElement) {
+        async function detectPeople(inputElement, camObj) {
+            if (currentEngine === 'python') {
+                if (['webcam', 'screenshare'].includes(camObj.sourceType)) {
+                    // Python can't easily access browser-side webcam/screen without complex streaming
+                    // Fallback to COCO-SSD for these sources if python engine is selected
+                    if (!cocoModel) return [];
+                    const tensor = tf.browser.fromPixels(inputElement);
+                    const predictions = await cocoModel.detect(tensor);
+                    tensor.dispose();
+                    return predictions.filter(p => p.class === 'person' && p.score > detectionThreshold);
+                }
+
+                try {
+                    const url = camObj.streamUrl;
+                    const response = await fetch(`http://localhost:8000/detect?url=${encodeURIComponent(url)}&threshold=${detectionThreshold}`);
+                    const data = await response.json();
+                    return data.detections || [];
+                } catch (err) {
+                    console.error("Python detection error:", err);
+                    return [];
+                }
+            }
+
             if (!model) return [];
 
             if (currentEngine === 'cocossd') {
@@ -595,7 +618,10 @@
                     // or the user provides a URL that is already a proxy.
                     // If the URL starts with rtsp://, we try to use our local proxy.
                     if (cam.sourceType === 'rtsp' && cam.streamUrl.startsWith('rtsp://')) {
-                        imgElement.src = `http://localhost:3000/rtsp-proxy?url=${encodeURIComponent(cam.streamUrl)}`;
+                        imgElement.src = `http://localhost:8000/rtsp-proxy?url=${encodeURIComponent(cam.streamUrl)}`;
+                    } else if (cam.sourceType === 'mjpeg') {
+                        // Use proxy for MJPEG to avoid CORS issues if needed
+                        imgElement.src = `http://localhost:8000/mjpeg-proxy?url=${encodeURIComponent(cam.streamUrl)}`;
                     } else {
                         imgElement.src = cam.streamUrl;
                     }
