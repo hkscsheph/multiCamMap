@@ -1,35 +1,38 @@
-[
-  {
-    "id": 1,
-    "x": 1005,
-    "y": 396,
-    "angle": 191.0353543855368,
-    "fov": 92.49486404347543,
-    "color": "#007bff",
-    "sourceType": "mjpeg",
-    "deviceId": "a5e74daccc3136a524e226007b4c542fdabc862812412f7c724df65fd0597be4",
-    "streamUrl": "http://localhost:3000/stream/1"
-  },
-  {
-    "id": 2,
-    "x": 1001,
-    "y": 214,
-    "angle": 174.31152311630478,
-    "fov": 81.80681377054206,
-    "color": "#9b59b6",
-    "sourceType": "mjpeg",
-    "deviceId": "a5e74daccc3136a524e226007b4c542fdabc862812412f7c724df65fd0597be4",
-    "streamUrl": "http://localhost:3000/stream/3"
-  },
-  {
-    "id": 3,
-    "x": 1220,
-    "y": 641,
-    "angle": 222.2522969489431,
-    "fov": 85.73473131907208,
-    "color": "#ff4757",
-    "sourceType": "mjpeg",
-    "deviceId": "a5e74daccc3136a524e226007b4c542fdabc862812412f7c724df65fd0597be4",
-    "streamUrl": "http://localhost:3000/stream/2"
-  }
-]
+{
+  "map": "bigCompRm.webp",
+  "cameras": [
+    {
+      "id": 1,
+      "x": 1005,
+      "y": 396,
+      "angle": 191.0353543855368,
+      "fov": 92.49486404347543,
+      "color": "#007bff",
+      "sourceType": "mjpeg",
+      "deviceId": "a5e74daccc3136a524e226007b4c542fdabc862812412f7c724df65fd0597be4",
+      "streamUrl": "http://localhost:3000/stream/1"
+    },
+    {
+      "id": 2,
+      "x": 1001,
+      "y": 214,
+      "angle": 174.31152311630478,
+      "fov": 81.80681377054206,
+      "color": "#9b59b6",
+      "sourceType": "mjpeg",
+      "deviceId": "a5e74daccc3136a524e226007b4c542fdabc862812412f7c724df65fd0597be4",
+      "streamUrl": "http://localhost:3000/stream/3"
+    },
+    {
+      "id": 3,
+      "x": 1220,
+      "y": 641,
+      "angle": 222.2522969489431,
+      "fov": 85.73473131907208,
+      "color": "#ff4757",
+      "sourceType": "mjpeg",
+      "deviceId": "a5e74daccc3136a524e226007b4c542fdabc862812412f7c724df65fd0597be4",
+      "streamUrl": "http://localhost:3000/stream/2"
+    }
+  ]
+}

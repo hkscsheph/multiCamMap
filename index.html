@@ -26,7 +26,10 @@
             width: 100vw;
             height: 100vh;
             z-index: 1;
-            background: #1a1a1a;
+            background-color: #1a1a1a;
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
             cursor: crosshair;
         }
 
@@ -249,6 +252,13 @@
                         </select>
                     </div>
                     <div style="display: flex; flex-direction: column; gap: 2px; flex: 1;">
+                        <span style="font-size: 8px; color: #888;">MAP</span>
+                        <select id="mapSelect" style="background: #000; color: #00ff41; border: 1px solid #444; font-size: 9px; padding: 2px; width: 95%;" onchange="switchMap(this.value)">
+                            <option value="bigCompRm.webp">Computer Room</option>
+                            <option value="sea.gif">Ocean View</option>
+                        </select>
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 2px; flex: 1;">
                         <span style="font-size: 8px; color: #888;">PRECISION</span>
                         <input type="range" min="0.01" max="0.2" step="0.01" value="0.05" style="width: 95%; height: 4px;" 
                             oninput="triangulationTolerance = parseFloat(this.value)">
@@ -350,6 +360,11 @@
             
             currentEngine = engine; // Update state ONLY after model is ready
             document.getElementById('status').innerText = `✅ ${engine.toUpperCase()} Active.`;
+        }
+
+        function switchMap(src) {
+            mCanvas.style.backgroundImage = `linear-gradient(rgba(0,0,0,0.3), rgba(0,0,0,0.3)), url('${src}')`;
+            document.getElementById('status').innerText = `✅ Map switched to ${src}`;
         }
 
         async function detectPeople(inputElement) {
@@ -743,18 +758,6 @@
         function drawMap() {
             mCtx.clearRect(0, 0, mCanvas.width, mCanvas.height);
             
-            // Draw background image (Full Width)
-            if (mapImg.complete && mapImg.naturalWidth > 0) {
-                const imgRatio = mapImg.naturalHeight / mapImg.naturalWidth;
-                const drawWidth = mCanvas.width;
-                const drawHeight = drawWidth * imgRatio;
-                mCtx.drawImage(mapImg, 0, 0, drawWidth, drawHeight);
-                
-                // Dim the image slightly for better visibility of overlays
-                mCtx.fillStyle = 'rgba(0,0,0,0.3)';
-                mCtx.fillRect(0, 0, drawWidth, drawHeight);
-            }
-
             // Grid (optional, keep it subtle)
             mCtx.strokeStyle = 'rgba(255,255,255,0.05)'; mCtx.lineWidth = 1;
             for (let i = 0; i < mCanvas.width; i += 100) {
@@ -1016,12 +1019,24 @@
             const json = prompt("Paste your camera config JSON here:");
             if (!json) return;
             try {
-                const importedCams = JSON.parse(json);
-                if (!Array.isArray(importedCams)) throw new Error("Invalid format");
+                const imported = JSON.parse(json);
+                let importedCams = [];
+                
+                if (Array.isArray(imported)) {
+                    importedCams = imported;
+                } else if (imported.cameras && Array.isArray(imported.cameras)) {
+                    importedCams = imported.cameras;
+                    if (imported.map) {
+                        switchMap(imported.map);
+                        document.getElementById('mapSelect').value = imported.map;
+                    }
+                } else {
+                    throw new Error("Invalid format");
+                }
                 
                 // Clear existing
                 cameras.forEach(c => {
-                    document.getElementById(`camCard${c.id}`)?.remove();
+                    document.getElementById(`camWrapper${c.id}`)?.remove();
                     document.getElementById(`feedBox${c.id}`)?.remove();
                     if (videoStreams[c.id]) {
                         videoStreams[c.id].getTracks().forEach(t => t.stop());
@@ -1048,8 +1063,11 @@
         };
 
         document.getElementById('copyConfigBtn').onclick = () => {
-            const config = JSON.stringify(cameras.map(({ detections, active, ...rest }) => rest), null, 2);
-            navigator.clipboard.writeText(config).then(() => {
+            const config = {
+                map: document.getElementById('mapSelect').value,
+                cameras: cameras.map(({ detections, active, ...rest }) => rest)
+            };
+            navigator.clipboard.writeText(JSON.stringify(config, null, 2)).then(() => {
                 const originalText = document.getElementById('copyConfigBtn').innerText;
                 document.getElementById('copyConfigBtn').innerText = '✅ COPIED!';
                 setTimeout(() => {
@@ -1062,6 +1080,7 @@
         //document.getElementById('startBtn').onclick = () => cameras.forEach(c => connectSingle(c.id));
 
         addCamera();
+        switchMap(document.getElementById('mapSelect').value);
         drawMap();
     </script>
 </body>
