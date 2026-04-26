@@ -294,6 +294,28 @@
         
         let cameras = [];
         const videoStreams = {}; 
+        let ripples = [];
+
+        class Ripple {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.r = 0;
+                this.life = 1.0;
+            }
+            update() {
+                this.r += 4.0;
+                this.life -= 0.001;
+            }
+            draw(ctx) {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
+                // Linear fade for more predictable "long distance" visibility
+                ctx.strokeStyle = `rgba(255, 255, 255, ${this.life * 0.4})`;
+                ctx.lineWidth = 1.0;
+                ctx.stroke();
+            }
+        }
 
         const mCanvas = document.getElementById('mapCanvas');
         const mCtx = mCanvas.getContext('2d');
@@ -758,6 +780,13 @@
         function drawMap() {
             mCtx.clearRect(0, 0, mCanvas.width, mCanvas.height);
             
+            // Ripples
+            ripples = ripples.filter(r => r.life > 0);
+            ripples.forEach(r => {
+                r.update();
+                r.draw(mCtx);
+            });
+
             // Grid (optional, keep it subtle)
             mCtx.strokeStyle = 'rgba(255,255,255,0.05)'; mCtx.lineWidth = 1;
             for (let i = 0; i < mCanvas.width; i += 100) {
@@ -971,7 +1000,11 @@
             cameras.forEach(cam => {
                 if (Math.hypot(cam.x - p.x, cam.y - p.y) < 30) selectedCam = cam;
             });
-            if (selectedCam) isDragging = true;
+            if (selectedCam) {
+                isDragging = true;
+            } else {
+                ripples.push(new Ripple(p.x, p.y));
+            }
         };
 
         function solveAutoCalibration(cam, data) {
