@@ -228,8 +228,8 @@
 
     
 
-    <div id="uiOverlay" class="ui-overlay">
-        <button id="toggleBtn" class="toggle-handle">▶</button>
+    <div id="uiOverlay" class="ui-overlay hidden">
+        <button id="toggleBtn" class="toggle-handle">◀</button>
         
         <div class="sidebar-content">
             <div class="config-bar" style="flex-direction: column; align-items: stretch; gap: 10px;">
@@ -254,8 +254,8 @@
                     <div style="display: flex; flex-direction: column; gap: 2px; flex: 1;">
                         <span style="font-size: 8px; color: #888;">MAP</span>
                         <select id="mapSelect" style="background: #000; color: #00ff41; border: 1px solid #444; font-size: 9px; padding: 2px; width: 95%;" onchange="switchMap(this.value)">
-                            <option value="bigCompRm.webp">Computer Room</option>
                             <option value="sea.gif">Ocean View</option>
+                            <option value="bigCompRm.webp">Computer Room</option>
                         </select>
                     </div>
                     <div style="display: flex; flex-direction: column; gap: 2px; flex: 1;">
@@ -295,9 +295,144 @@
         let cameras = [];
         const videoStreams = {}; 
         let ripples = [];
+        let fishTargets = [];
+        let ambientFish = [];
+
+        class Fish {
+            constructor(x, y, isAmbient = false) {
+                this.x = x;
+                this.y = y;
+                this.tx = x; // Target X
+                this.ty = y; // Target Y
+                this.angle = Math.random() * Math.PI * 2;
+                this.speed = 1.2 + Math.random();
+                this.turnSpeed = 0.12; // Sharper turning
+                this.wiggle = Math.random() * 10;
+                this.isAmbient = isAmbient;
+                this.color = isAmbient ? CAM_COLORS[Math.floor(Math.random() * CAM_COLORS.length)] : '#ff7979';
+                this.scaredRipples = new Set(); // Track which ripples already scared this fish
+                this.scareTimer = 0;
+                this.evasionAngle = null;
+            }
+
+            update() {
+                let currentSpeed = this.speed;
+                let currentWiggleSpeed = 0.15;
+
+                if (this.scareTimer > 0) {
+                    this.scareTimer--;
+                    currentSpeed = this.speed * 2.5; // Reduced from 4
+                    currentWiggleSpeed = 0.3;       // Reduced from 0.45
+                } else {
+                    this.evasionAngle = null;
+                }
+
+                // React to ripples (Scare effect - once per ripple)
+                ripples.forEach(r => {
+                    const distToRipple = Math.hypot(this.x - r.x, this.y - r.y);
+                    if (Math.abs(distToRipple - r.r) < 60 && !this.scaredRipples.has(r.id)) {
+                        this.scaredRipples.add(r.id);
+                        this.scareTimer = 35; // Reduced from 60 (approx 0.6s)
+                        this.evasionAngle = Math.atan2(this.y - r.y, this.x - r.x);
+                    }
+                });
+
+                // Ambient wandering logic
+                const distToTarget = Math.hypot(this.tx - this.x, this.ty - this.y);
+                if (this.isAmbient && distToTarget < 30) { // Larger acceptance radius
+                    // 10% chance to head off-screen and be removed
+                    if (Math.random() < 0.1) {
+                        this.tx = Math.random() < 0.5 ? -200 : window.innerWidth + 200;
+                        this.ty = Math.random() * window.innerHeight;
+                    } else {
+                        this.tx = Math.random() * window.innerWidth;
+                        this.ty = Math.random() * window.innerHeight;
+                    }
+                }
+
+                // Steer toward target or evasion angle
+                const finalTargetAngle = this.evasionAngle !== null ? this.evasionAngle : Math.atan2(this.ty - this.y, this.tx - this.x);
+                const finalTurnSpeed = this.evasionAngle !== null ? 0.25 : this.turnSpeed;
+
+                if (distToTarget > 10 || this.evasionAngle !== null) {
+                    let diff = finalTargetAngle - this.angle;
+                    while (diff < -Math.PI) diff += Math.PI * 2;
+                    while (diff > Math.PI) diff -= Math.PI * 2;
+                    
+                    this.angle += diff * finalTurnSpeed;
+                    this.angle = (this.angle + Math.PI * 2) % (Math.PI * 2);
+                    
+                    this.x += Math.cos(this.angle) * currentSpeed;
+                    this.y += Math.sin(this.angle) * currentSpeed;
+                }
+
+                this.wiggle += currentWiggleSpeed;
+            }
+
+            draw(ctx) {
+                const bodyWiggle = Math.sin(this.wiggle) * 0.2;
+                
+                // Draw Shadow Pass
+                ctx.save();
+                ctx.translate(this.x + 20, this.y + 25); 
+                ctx.rotate(this.angle + bodyWiggle);
+                ctx.globalAlpha = 0.2;
+                ctx.filter = 'blur(5px) brightness(0)';
+                this.drawFishShape(ctx, true);
+                ctx.restore();
+
+                // Draw Fish Pass
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.angle + bodyWiggle);
+                ctx.globalAlpha = 1.0;
+                this.drawFishShape(ctx, false);
+                ctx.restore();
+            }
+
+            drawFishShape(ctx, isShadow) {
+                const size = 15;
+                ctx.fillStyle = isShadow ? '#000' : this.color;
+                
+                // Body
+                ctx.beginPath();
+                ctx.ellipse(0, 0, size, size/2, 0, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Tail
+                ctx.beginPath();
+                ctx.moveTo(-size + 2, 0);
+                ctx.lineTo(-size - 8, -8);
+                ctx.lineTo(-size - 8, 8);
+                ctx.closePath();
+                ctx.fill();
+
+                if (!isShadow) {
+                    ctx.fillStyle = 'rgba(255,255,255,0.8)';
+                    ctx.beginPath();
+                    ctx.arc(size - 5, -2, 2.5, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.fillStyle = 'black';
+                    ctx.beginPath();
+                    ctx.arc(size - 4, -2, 1, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+        }
+
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                const f = new Fish(Math.random() * window.innerWidth, Math.random() * window.innerHeight, true);
+                f.tx = Math.random() * window.innerWidth;
+                f.ty = Math.random() * window.innerHeight;
+                ambientFish.push(f);
+                document.getElementById('status').innerText = `🐟 Ambient Fish Spawned! Total: ${ambientFish.length}`;
+            }
+        });
 
         class Ripple {
             constructor(x, y) {
+                this.id = Date.now() + Math.random();
                 this.x = x;
                 this.y = y;
                 this.r = 0;
@@ -807,90 +942,66 @@
                 });
             });
 
-            // Triangulation (Optimized: Competitive Greedy Matching)
-            const candidates = [];
+            // Triangulation & Fish Management
             const activeCams = cameras.filter(c => c.detections.length > 0 && c.active);
+            const targets = [];
             
             if (activeCams.length >= 2) {
+                const candidates = [];
                 for (let i = 0; i < activeCams.length; i++) {
                     for (let j = i + 1; j < activeCams.length; j++) {
                         const cam1 = activeCams[i];
                         const cam2 = activeCams[j];
-                        
-                        cam1.detections.forEach((d1, d1Idx) => {
-                            cam2.detections.forEach((d2, d2Idx) => {
+                        cam1.detections.forEach(d1 => {
+                            cam2.detections.forEach(d2 => {
                                 const p = getIntersection(cam1, d1, cam2, d2);
-                                if (p) {
-                                    // 1. Check if all cameras covering this point also see it
-                                    const seeingCams = [];
-                                    let allCoveringSee = true;
-                                    
-                                    cameras.forEach(cam => {
-                                        if (isPointInFOV(cam, p)) {
-                                            const angleToPoint = Math.atan2(p.y - cam.y, p.x - cam.x);
-                                            const matchingDetIdx = cam.detections.findIndex(det => {
-                                                let diff = (det.angle - angleToPoint + Math.PI + 4 * Math.PI) % (2 * Math.PI) - Math.PI;
-                                                return Math.abs(diff) < triangulationTolerance;
-                                            });
-                                            
-                                            if (matchingDetIdx !== -1) {
-                                                seeingCams.push({ camId: cam.id, detIdx: matchingDetIdx });
-                                            } else {
-                                                allCoveringSee = false;
-                                            }
-                                        }
-                                    });
-
-                                    if (allCoveringSee && seeingCams.length >= 2) {
-                                        candidates.push({
-                                            pos: p,
-                                            score: seeingCams.length,
-                                            contributingRays: seeingCams
-                                        });
-                                    }
-                                }
+                                if (p) candidates.push({ pos: p, cams: [cam1.id, cam2.id] });
                             });
                         });
                     }
                 }
+
+                // Simple greedy deduplication
+                candidates.sort((a,b) => b.cams.length - a.cams.length);
+                candidates.forEach(cand => {
+                    const isDuplicate = targets.some(t => Math.hypot(t.x - cand.pos.x, t.y - cand.pos.y) < 50);
+                    if (!isDuplicate) targets.push(cand.pos);
+                });
             }
 
-            // Greedy selection: highest score first, consume rays
-            const targets = [];
-            const consumedRays = new Set(); // Format: "camId-detIdx"
-
-            candidates.sort((a, b) => b.score - a.score);
-
-            candidates.forEach(cand => {
-                // Check if any contributing ray is already used
-                const isAvailable = cand.contributingRays.every(ray => 
-                    !consumedRays.has(`${ray.camId}-${ray.detIdx}`)
-                );
-
-                if (isAvailable) {
-                    targets.push(cand.pos);
-                    // Consume all rays that can see this point
-                    cand.contributingRays.forEach(ray => {
-                        consumedRays.add(`${ray.camId}-${ray.detIdx}`);
-                    });
+            // Update/Spawn Fish for each target
+            targets.forEach((t, i) => {
+                if (!fishTargets[i]) {
+                    fishTargets[i] = new Fish(t.x, t.y);
                 }
+                fishTargets[i].tx = t.x;
+                fishTargets[i].ty = t.y;
+            });
+            
+            // Remove excess fish if targets disappear
+            if (fishTargets.length > targets.length) {
+                fishTargets.splice(targets.length);
+            }
+
+            // Render Fish
+            fishTargets.forEach(f => {
+                f.update();
+                f.draw(mCtx);
             });
 
-            targets.forEach((p, idx) => {
-                const isDuplicate = targets.slice(0, idx).some(prev => Math.hypot(p.x - prev.x, p.y - prev.y) < 30);
-                if (!isDuplicate) {
-                    if (highVisibilityMode) {
-                        mCtx.fillStyle = "rgba(0,0,0,0.9)";
-                        mCtx.beginPath();
-                        // mCtx.arc(p.x, p.y - 8, 20, 0, Math.PI * 2);
-                        mCtx.fill();
-                        mCtx.font = "36px Arial";
-                    } else {
-                        mCtx.font = "24px Arial";
-                    }
-                    mCtx.textAlign = "center";
-                    mCtx.fillText("🐟", p.x, p.y);
-                }
+            // Render Ambient Fish
+            const prevAmbientCount = ambientFish.length;
+            ambientFish = ambientFish.filter(f => {
+                const margin = 100;
+                return f.x > -margin && f.x < mCanvas.width + margin &&
+                       f.y > -margin && f.y < mCanvas.height + margin;
+            });
+            if (ambientFish.length !== prevAmbientCount) {
+                document.getElementById('status').innerText = `🐟 Fish Left Viewport. Total: ${ambientFish.length}`;
+            }
+            ambientFish.forEach(f => {
+                f.update();
+                f.draw(mCtx);
             });
 
             // Draw Cameras
