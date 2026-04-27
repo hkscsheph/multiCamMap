@@ -294,6 +294,11 @@
         let triangulationTolerance = 0.05;
         let detectionThreshold = 0.5;
         let fishSize = 20;
+        let lastAmbientSpawnTime = 0;
+        const AMBIENT_SPAWN_INTERVAL = 15000; // 15 seconds
+        const MAX_AMBIENT_FISH = 20;
+        let fishColorIndex = 0;
+        const INTERSECTION_FISH_COLORS = ['#ff7979', '#3498db', '#2ecc71', '#f1c40f', '#9b59b6', '#e67e22', '#1abc9c', '#e74c3c'];
         
         const mapImg = new Image();
         mapImg.src = 'bigCompRm.webp';
@@ -308,7 +313,7 @@
         let ambientFish = [];
 
         class Fish {
-            constructor(x, y, isAmbient = false) {
+            constructor(x, y, isAmbient = false, colorIndex = null) {
                 this.x = x;
                 this.y = y;
                 this.tx = x; // Target X
@@ -318,7 +323,18 @@
                 this.turnSpeed = 0.12; // Sharper turning
                 this.wiggle = Math.random() * 10;
                 this.isAmbient = isAmbient;
-                this.color = isAmbient ? CAM_COLORS[Math.floor(Math.random() * CAM_COLORS.length)] : '#ff7979';
+                
+                if (isAmbient) {
+                    this.color = CAM_COLORS[Math.floor(Math.random() * CAM_COLORS.length)];
+                } else {
+                    // Use provided color index or get next from rotation
+                    const idx = colorIndex !== null ? colorIndex : fishColorIndex;
+                    this.color = INTERSECTION_FISH_COLORS[idx % INTERSECTION_FISH_COLORS.length];
+                    if (colorIndex === null) {
+                        fishColorIndex = (fishColorIndex + 1) % INTERSECTION_FISH_COLORS.length;
+                    }
+                }
+                
                 this.scaredRipples = new Set(); // Track which ripples already scared this fish
                 this.scareTimer = 0;
                 this.evasionAngle = null;
@@ -996,17 +1012,40 @@
             const targets = [];
             
             if (activeCams.length >= 2) {
+                // Track which raycasts have been used
+                const usedRaycasts = new Map();
+                activeCams.forEach(cam => {
+                    usedRaycasts.set(cam.id, new Set());
+                });
+                
                 const candidates = [];
                 for (let i = 0; i < activeCams.length; i++) {
                     for (let j = i + 1; j < activeCams.length; j++) {
                         const cam1 = activeCams[i];
                         const cam2 = activeCams[j];
-                        cam1.detections.forEach(d1 => {
-                            cam2.detections.forEach(d2 => {
+                        
+                        // Try to find the best matching raycasts between these two cameras
+                        for (let d1Index = 0; d1Index < cam1.detections.length; d1Index++) {
+                            // Skip if this raycast is already used
+                            if (usedRaycasts.get(cam1.id).has(d1Index)) continue;
+                            
+                            for (let d2Index = 0; d2Index < cam2.detections.length; d2Index++) {
+                                // Skip if this raycast is already used
+                                if (usedRaycasts.get(cam2.id).has(d2Index)) continue;
+                                
+                                const d1 = cam1.detections[d1Index];
+                                const d2 = cam2.detections[d2Index];
                                 const p = getIntersection(cam1, d1, cam2, d2);
-                                if (p) candidates.push({ pos: p, cams: [cam1.id, cam2.id] });
-                            });
-                        });
+                                
+                                if (p) {
+                                    // Mark these raycasts as used
+                                    usedRaycasts.get(cam1.id).add(d1Index);
+                                    usedRaycasts.get(cam2.id).add(d2Index);
+                                    candidates.push({ pos: p, cams: [cam1.id, cam2.id] });
+                                    break; // Move to next raycast in cam1
+                                }
+                            }
+                        }
                     }
                 }
 
@@ -1021,14 +1060,22 @@
             // Update/Spawn Fish for each target
             targets.forEach((t, i) => {
                 if (!fishTargets[i]) {
-                    fishTargets[i] = new Fish(t.x, t.y);
+                    // Assign different color to each new fish
+                    fishTargets[i] = new Fish(t.x, t.y, false, i);
+                    // Create ripple when fish is detected
+                    ripples.push(new Ripple(t.x, t.y));
                 }
                 fishTargets[i].tx = t.x;
                 fishTargets[i].ty = t.y;
             });
             
-            // Remove excess fish if targets disappear
+            // Convert excess fish to ambient fish instead of removing them
             if (fishTargets.length > targets.length) {
+                for (let i = targets.length; i < fishTargets.length; i++) {
+                    const fish = fishTargets[i];
+                    fish.isAmbient = true;
+                    ambientFish.push(fish);
+                }
                 fishTargets.splice(targets.length);
             }
 
@@ -1073,6 +1120,41 @@
                 }
                 mCtx.restore();
             });
+
+            // Spawn ambient fish every 15 seconds in ocean view until max is reached
+            const currentTime = Date.now();
+            if (currentTime - lastAmbientSpawnTime > AMBIENT_SPAWN_INTERVAL && ambientFish.length < MAX_AMBIENT_FISH) {
+                lastAmbientSpawnTime = currentTime;
+                
+                // Spawn from random side
+                const side = Math.floor(Math.random() * 4); // 0: top, 1: right, 2: bottom, 3: left
+                let x, y;
+                
+                switch(side) {
+                    case 0: // Top
+                        x = Math.random() * mCanvas.width;
+                        y = -50;
+                        break;
+                    case 1: // Right
+                        x = mCanvas.width + 50;
+                        y = Math.random() * mCanvas.height;
+                        break;
+                    case 2: // Bottom
+                        x = Math.random() * mCanvas.width;
+                        y = mCanvas.height + 50;
+                        break;
+                    case 3: // Left
+                        x = -50;
+                        y = Math.random() * mCanvas.height;
+                        break;
+                }
+                
+                const newFish = new Fish(x, y, true);
+                newFish.tx = Math.random() * mCanvas.width;
+                newFish.ty = Math.random() * mCanvas.height;
+                ambientFish.push(newFish);
+                document.getElementById('status').innerText = `🐟 New Fish Spawned! Total: ${ambientFish.length}/${MAX_AMBIENT_FISH}`;
+            }
 
             requestAnimationFrame(drawMap);
         }
