@@ -222,9 +222,9 @@
 
     <div class="status" id="status">📡 System: Loading AI Core...</div>
     
-    <div id="camLegend" class="cam-legend">
+    <!-- <div id="camLegend" class="cam-legend"> -->
         <!-- Dynamic legend -->
-    </div>
+    <!-- </div> -->
 
     
 
@@ -268,6 +268,14 @@
                         <input type="range" min="0.1" max="0.9" step="0.05" value="0.5" style="width: 95%; height: 4px;" 
                             oninput="detectionThreshold = parseFloat(this.value)">
                     </div>
+                    <div style="display: flex; flex-direction: column; gap: 2px; flex: 1;">
+                        <span style="font-size: 8px; color: #888;">FISH SIZE</span>
+                        <div style="display: flex; align-items: center; gap: 5px;">
+                            <input type="range" min="5" max="50" step="1" value="20" style="width: 80%; height: 4px;" 
+                                id="fishSizeSlider" oninput="fishSize = parseInt(this.value); document.getElementById('fishSizeVal').innerText = this.value;">
+                            <span id="fishSizeVal" style="font-size: 8px; color: #00ff41; width: 20px;">20</span>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -285,6 +293,7 @@
         let highVisibilityMode = false;
         let triangulationTolerance = 0.05;
         let detectionThreshold = 0.5;
+        let fishSize = 20;
         
         const mapImg = new Image();
         mapImg.src = 'bigCompRm.webp';
@@ -392,8 +401,9 @@
             }
 
             drawFishShape(ctx, isShadow, wiggle) {
-                const size = 18;
+                const size = fishSize;
                 const bend = wiggle * 0.4;
+                const scale = size / 18; // Scale factor relative to default size of 18
                 
                 if (isShadow) {
                     ctx.fillStyle = '#000';
@@ -410,10 +420,10 @@
                     ctx.fillStyle = this.color;
                     ctx.globalAlpha = 0.6;
                     ctx.beginPath();
-                    ctx.ellipse(2, 6, 6, 3, Math.PI/4 + bend, 0, Math.PI*2);
+                    ctx.ellipse(2 * scale, 6 * scale, 6 * scale, 3 * scale, Math.PI/4 + bend, 0, Math.PI*2);
                     ctx.fill();
                     ctx.beginPath();
-                    ctx.ellipse(2, -6, 6, 3, -Math.PI/4 + bend, 0, Math.PI*2);
+                    ctx.ellipse(2 * scale, -6 * scale, 6 * scale, 3 * scale, -Math.PI/4 + bend, 0, Math.PI*2);
                     ctx.fill();
                     ctx.restore();
                 }
@@ -449,12 +459,12 @@
                 if (!isShadow) {
                     // Two smaller eyes (symmetrical for top-down view)
                     ctx.fillStyle = 'white';
-                    ctx.beginPath(); ctx.arc(size - 8, -4, 2.2, 0, Math.PI * 2); ctx.fill();
-                    ctx.beginPath(); ctx.arc(size - 8, 4, 2.2, 0, Math.PI * 2); ctx.fill();
+                    ctx.beginPath(); ctx.arc(size - 8 * scale, -4 * scale, 2.2 * scale, 0, Math.PI * 2); ctx.fill();
+                    ctx.beginPath(); ctx.arc(size - 8 * scale, 4 * scale, 2.2 * scale, 0, Math.PI * 2); ctx.fill();
                     
                     ctx.fillStyle = 'black';
-                    ctx.beginPath(); ctx.arc(size - 7, -4, 1.1, 0, Math.PI * 2); ctx.fill();
-                    ctx.beginPath(); ctx.arc(size - 7, 4, 1.1, 0, Math.PI * 2); ctx.fill();
+                    ctx.beginPath(); ctx.arc(size - 7 * scale, -4 * scale, 1.1 * scale, 0, Math.PI * 2); ctx.fill();
+                    ctx.beginPath(); ctx.arc(size - 7 * scale, 4 * scale, 1.1 * scale, 0, Math.PI * 2); ctx.fill();
                 }
             }
         }
@@ -496,7 +506,7 @@
         const configOutput = document.getElementById('configOutput');
         const camConfigs = document.getElementById('camConfigs');
         const feedsContainer = document.getElementById('feedsContainer');
-        const camLegend = document.getElementById('camLegend');
+        // const camLegend = document.getElementById('camLegend');
         const uiOverlay = document.getElementById('uiOverlay');
         const toggleBtn = document.getElementById('toggleBtn');
         const visibilityBtn = document.getElementById('visibilityBtn');
@@ -644,7 +654,7 @@
             cameras.push(newCam);
             renderCamUI(newCam);
             updateCamSource(id);
-            updateLegend();
+            // updateLegend();
             updateConfigOutput();
         }
 
@@ -724,7 +734,7 @@
                 videoStreams[id].getTracks().forEach(t => t.stop());
                 delete videoStreams[id];
             }
-            updateLegend();
+            // updateLegend();
             updateConfigOutput();
         }
 
@@ -786,11 +796,11 @@
             updateConfigOutput();
         }
 
-        function updateLegend() {
-            camLegend.innerHTML = cameras.map(cam => `
-                <span style="color: ${cam.color};">● Cam ${cam.id}</span>
-            `).join('');
-        }
+        // function updateLegend() {
+        //     camLegend.innerHTML = cameras.map(cam => `
+        //         <span style="color: ${cam.color};">● Cam ${cam.id}</span>
+        //     `).join('');
+        // }
 
         async function connectSingle(id) {
             const cam = cameras.find(c => c.id === id);
@@ -1238,7 +1248,7 @@
                     cameras.push(newCam);
                     renderCamUI(newCam);
                 });
-                updateLegend();
+                // updateLegend();
                 document.getElementById('status').innerText = "✅ Config Imported.";
             } catch (e) {
                 alert("Error importing config: " + e.message);
