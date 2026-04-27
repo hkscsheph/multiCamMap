@@ -271,9 +271,9 @@
                     <div style="display: flex; flex-direction: column; gap: 2px; flex: 1;">
                         <span style="font-size: 8px; color: #888;">FISH SIZE</span>
                         <div style="display: flex; align-items: center; gap: 5px;">
-                            <input type="range" min="5" max="50" step="1" value="20" style="width: 80%; height: 4px;" 
+                            <input type="range" min="5" max="50" step="1" value="30" style="width: 80%; height: 4px;" 
                                 id="fishSizeSlider" oninput="fishSize = parseInt(this.value); document.getElementById('fishSizeVal').innerText = this.value;">
-                            <span id="fishSizeVal" style="font-size: 8px; color: #00ff41; width: 20px;">20</span>
+                            <span id="fishSizeVal" style="font-size: 8px; color: #00ff41; width: 20px;">30</span>
                         </div>
                     </div>
                 </div>
@@ -293,7 +293,7 @@
         let highVisibilityMode = false;
         let triangulationTolerance = 0.05;
         let detectionThreshold = 0.5;
-        let fishSize = 20;
+        let fishSize = 30;
         let lastAmbientSpawnTime = 0;
         const AMBIENT_SPAWN_INTERVAL = 15000; // 15 seconds
         const MAX_AMBIENT_FISH = 20;
