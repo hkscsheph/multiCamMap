@@ -297,7 +297,6 @@
         let lastAmbientSpawnTime = 0;
         const AMBIENT_SPAWN_INTERVAL = 15000; // 15 seconds
         const MAX_AMBIENT_FISH = 20;
-        let fishColorIndex = 0;
         const INTERSECTION_FISH_COLORS = ['#ff7979', '#3498db', '#2ecc71', '#f1c40f', '#9b59b6', '#e67e22', '#1abc9c', '#e74c3c'];
         
         const mapImg = new Image();
@@ -327,12 +326,8 @@
                 if (isAmbient) {
                     this.color = CAM_COLORS[Math.floor(Math.random() * CAM_COLORS.length)];
                 } else {
-                    // Use provided color index or get next from rotation
-                    const idx = colorIndex !== null ? colorIndex : fishColorIndex;
-                    this.color = INTERSECTION_FISH_COLORS[idx % INTERSECTION_FISH_COLORS.length];
-                    if (colorIndex === null) {
-                        fishColorIndex = (fishColorIndex + 1) % INTERSECTION_FISH_COLORS.length;
-                    }
+                    // Use random color from intersection fish colors
+                    this.color = INTERSECTION_FISH_COLORS[Math.floor(Math.random() * INTERSECTION_FISH_COLORS.length)];
                 }
                 
                 this.scaredRipples = new Set(); // Track which ripples already scared this fish
@@ -634,8 +629,17 @@
                 requestAnimationFrame(() => processCamera(imgElement, canvas, camObj));
                 return;
             }
-            const predictions = await detectPeople(imgElement);
-            handlePredictions(predictions, canvas, imgElement.naturalWidth, imgElement.naturalHeight, camObj);
+            
+            // Throttle detection to 1 second interval
+            const now = Date.now();
+            if (!camObj.lastDetectionTime) camObj.lastDetectionTime = 0;
+            
+            if (now - camObj.lastDetectionTime >= 100) {
+                camObj.lastDetectionTime = now;
+                const predictions = await detectPeople(imgElement);
+                handlePredictions(predictions, canvas, imgElement.naturalWidth, imgElement.naturalHeight, camObj);
+            }
+            
             requestAnimationFrame(() => processCamera(imgElement, canvas, camObj));
         }
 
@@ -644,8 +648,17 @@
                 requestAnimationFrame(() => processWebcamCamera(videoElement, canvas, camObj));
                 return;
             }
-            const predictions = await detectPeople(videoElement);
-            handlePredictions(predictions, canvas, videoElement.videoWidth, videoElement.videoHeight, camObj);
+            
+            // Throttle detection to 1 second interval
+            const now = Date.now();
+            if (!camObj.lastDetectionTime) camObj.lastDetectionTime = 0;
+            
+            if (now - camObj.lastDetectionTime >= 1000) {
+                camObj.lastDetectionTime = now;
+                const predictions = await detectPeople(videoElement);
+                handlePredictions(predictions, canvas, videoElement.videoWidth, videoElement.videoHeight, camObj);
+            }
+            
             requestAnimationFrame(() => processWebcamCamera(videoElement, canvas, camObj));
         }
 
@@ -1024,12 +1037,14 @@
                 });
                 
                 const candidates = [];
+                
+                // Only use pairs of cameras (2 raycasts per detection)
                 for (let i = 0; i < activeCams.length; i++) {
                     for (let j = i + 1; j < activeCams.length; j++) {
                         const cam1 = activeCams[i];
                         const cam2 = activeCams[j];
                         
-                        // Try to find the best matching raycasts between these two cameras
+                        // Try to find matching raycasts between these two cameras
                         for (let d1Index = 0; d1Index < cam1.detections.length; d1Index++) {
                             // Skip if this raycast is already used
                             if (usedRaycasts.get(cam1.id).has(d1Index)) continue;
@@ -1043,9 +1058,10 @@
                                 const p = getIntersection(cam1, d1, cam2, d2);
                                 
                                 if (p) {
-                                    // Mark these raycasts as used
+                                    // Mark these raycasts as used (each raycast contributes to only 1 detection)
                                     usedRaycasts.get(cam1.id).add(d1Index);
                                     usedRaycasts.get(cam2.id).add(d2Index);
+                                    // Store with exactly 2 cameras
                                     candidates.push({ pos: p, cams: [cam1.id, cam2.id] });
                                     break; // Move to next raycast in cam1
                                 }
@@ -1054,8 +1070,8 @@
                     }
                 }
 
-                // Simple greedy deduplication
-                candidates.sort((a,b) => b.cams.length - a.cams.length);
+                // Deduplicate nearby positions
+                candidates.sort((a, b) => b.cams.length - a.cams.length);
                 candidates.forEach(cand => {
                     const isDuplicate = targets.some(t => Math.hypot(t.x - cand.pos.x, t.y - cand.pos.y) < 50);
                     if (!isDuplicate) targets.push(cand.pos);
